@@ -31,21 +31,6 @@ pretending the write question is already answered and measures it:
 
 - Most Data/System escapes will very likely measure **read-only**; the
   measurement is the deliverable, not guesswork.
-- **MobileGestalt is the proven writable target**: GestaltX
-  (https://github.com/huamidev/GestaltX) demonstrated in-place plist writes to
-  `com.apple.MobileGestalt.plist` on iOS 27.x through the same
-  worse_query/containermanagerd technique. BlueForge exposes the same target
-  in CodecForge with a GestaltX-style commit:
-  - TOCTOU check: the on-file bytes must still equal the bytes captured at
-    load (refuses to clobber a cache that moved underneath us),
-  - **in-place write** keeping the file's inode (`FileHandle` truncate +
-    rewrite) because some extensions lack directory-create access, which is
-    why *rename based* replacement is reserved for marker-verified dirs,
-  - readback-verified write (semantic comparison of every changed key),
-  - automatic recovery: previous bytes written back and verified on any
-    failure,
-  - verified backups in `Documents/GestaltBackups/` (system volumes may not
-    allow extra files; our own container always does).
 - If any Bluetooth-state path turns out writable, the plausible wins are state
   that bluetoothd re-reads on adapter reconnect, e.g. cached per-device
   capability/codec records in `com.apple.bluetooth` preferences. If a forge

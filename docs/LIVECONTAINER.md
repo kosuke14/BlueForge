@@ -20,7 +20,7 @@ rather than by bundle identity:
    query is retried (GestaltX does the same).
 3. **No bundle-path assumptions**: nothing in the codebase reads its own app
    bundle path or writes next to the executable; all local state (forge
-   history, Gestalt backups) lives in the Documents directory, which follows
+   history) lives in the Documents directory, which follows
    the host process under LiveContainer.
 4. **Graceful degradation without entitlements**: if no group resolves, every
    escape call logs `no accessible container for <group>` and the UI simply
@@ -29,13 +29,11 @@ rather than by bundle identity:
 
 ## What to expect
 
-- **iOS 27.x**: SystemGroup escape works (proven by GestaltX writing
-  `com.apple.MobileGestalt.plist` in-place on current OS). Open
-  CodecForge → MobileGestalt.plist.
+- **iOS 27.x**: SystemGroup escape works (proven by GestaltX's on-device
+  writes); BlueForge uses it read-only for the A2DP probe and, where a target
+  measures writable, for CodecForge experiments on Bluetooth state.
 - **iOS 26.x**: the containermanagerd escape works for Data/System + App Group
-  paths per worse_query compatibility; GestaltX states on-device MobileGestalt
-  access is *not* supported on 26.x, so treat that target as likely
-  inaccessible there and let the probe report it.
+  paths per worse_query compatibility; let the probe report what it finds.
 - Signing: give the (re-signed) bundle at least one App Group entitlement —
   any one. The runtime discovery accepts whatever the signer embeds.
 

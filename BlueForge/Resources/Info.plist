@@ -13,9 +13,7 @@
     <key>UILaunchScreen</key>
     <dict/>
     <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>BlueForge streams audio to Bluetooth LE receivers using the selected codec.</string>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>BlueForge captures microphone audio for encoding and streaming.</string>
+    <string>BlueForge streams encoded audio to Bluetooth LE receivers using the selected codec.</string>
     <key>UIBackgroundModes</key>
     <array>
         <string>audio</string>

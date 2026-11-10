@@ -1,7 +1,9 @@
 # BlueForge – Bluetooth Audio Codec Extender (jailed iOS)
 
-A prototype iOS app that encodes audio with a selectable Bluetooth audio codec
-and streams the encoded frames over BLE to a paired receiver (custom firmware).
+A prototype iOS app that encodes **media files** with a selectable Bluetooth
+audio codec (LDAC / SBC / AAC / LC3) and streams the encoded frames over BLE
+to a paired receiver — e.g. another iPhone running this app (any wired
+headphones) or custom BLE receiver firmware. The microphone is not used.
 
 ## Quick start (5 steps, in-app guide)
 
@@ -17,11 +19,12 @@ audio from an iPhone — using live status:
    negotiation).
 4. **BLE**: sender → Scan, tap the device; receiver → Start Receiver
    (advertises as `BlueForge RX`).
-5. **Stream**: sender taps Start Capture; received frames play through
-   AVAudioEngine.
+5. **Stream**: sender picks a media file (Files app) and taps play;
+   received frames decode and play through AVAudioEngine. No microphone is
+   used anywhere in the app.
 
-Everything advanced (sandbox probes, CodecForge, MobileGestalt experiments)
-lives under **上級** links and is not needed for the above.
+Everything advanced (sandbox probes, CodecForge experiments) lives under
+**上級** links and is not needed for the above.
 
 ## Honest scope / limitations (read first)
 
@@ -103,11 +106,6 @@ Source-complete prototype (validated C bridges on Linux; iOS compile via CI):
   proven-writable targets get a transactional plist editor (atomic rename-in,
   `.bf.bak` backup, auto-restore on failure, per-attempt history in
   `forge_history.json`). See `docs/CODECFORGE.md`.
-- GestaltX-style MobileGestalt commit: in-place, readback-verified writes to
-  `com.apple.MobileGestalt.plist` (iOS 27.x SystemGroup) with automatic
-  recovery and verified backups — the write path proven possible by
-  https://github.com/huamidev/GestaltX. Same escape plumbing, cache target
-  `CacheExtra`.
 - LiveContainer-friendly: App Groups are discovered at runtime from the
   process's effective entitlements (SecTask, then Mach-O signature parse —
   LCSign/GestaltX technique), every signed group is tried per escape call,

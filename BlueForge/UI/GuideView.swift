@@ -10,6 +10,7 @@
 
 import SwiftUI
 import CoreBluetooth
+import UniformTypeIdentifiers
 
 struct GuideView: View {
     @Binding var role: AudioRole
@@ -113,20 +114,34 @@ struct GuideView: View {
                         }
                     }
 
-                    stepCard(index: 5, "配信を開始", done: pipeline.isRunning) {
+                    stepCard(index: 5, "音源ファイルを選んで配信開始", done: pipeline.isRunning) {
+                        Button {
+                            showImporter = true
+                        } label: {
+                            Label("ファイルを選ぶ", systemImage: "folder")
+                        }
+                        .buttonStyle(.bordered)
+                        if let name = pipeline.fileName {
+                            Text(name).font(.caption).foregroundColor(.secondary)
+                            ProgressView(value: pipeline.progress)
+                        }
                         Button {
                             if pipeline.isRunning {
                                 pipeline.stop()
-                            } else {
-                                try? pipeline.startCapture()
+                            } else if let url = mediaURL {
+                                do { try pipeline.startPlayback(url: url) }
+                                catch { pipeline.lastError = error.localizedDescription }
                             }
                         } label: {
-                            Label(pipeline.isRunning ? "停止" : "キャプチャ開始",
-                                  systemImage: pipeline.isRunning ? "stop.fill" : "mic.fill")
-                                .frame(maxHeight: 22)
+                            Label(pipeline.isRunning ? "停止" : "再生して配信",
+                                  systemImage: pipeline.isRunning ? "stop.fill" : "play.fill")
                                 .padding(.horizontal, 12)
                         }
                         .buttonStyle(.borderedProminent)
+                        .disabled(mediaURL == nil && !pipeline.isRunning)
+                        if let err = pipeline.lastError {
+                            Text(err).font(.caption).foregroundColor(.red)
+                        }
                     }
                 } else {
                     stepCard(index: 4, "受信を開始(待ち受け)", done: receiver.isAdvertising) {
@@ -163,6 +178,16 @@ struct GuideView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("スタートガイド")
         .navigationBarTitleDisplayMode(.inline)
+        .fileImporter(isPresented: $showImporter,
+                      allowedContentTypes: [.audio],
+                      allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                _ = url.startAccessingSecurityScopedResource()
+                mediaURL = url
+                do { try pipeline.startPlayback(url: url) }
+                catch { pipeline.lastError = error.localizedDescription }
+            }
+        }
     }
 
     private var goalCard: some View {

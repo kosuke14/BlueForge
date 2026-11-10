@@ -47,19 +47,6 @@ struct ForgeView: View {
                 }
             }
 
-            DisclosureGroup("Optional: MobileGestalt route (not needed for the main goal)") {
-                Button("Open MobileGestalt.plist") {
-                    probe.appGroupOverride =
-                        appGroup == "group.com.blueforge.app" ? nil : appGroup
-                    forge.probe = probe
-                    forge.inspectFile(GestaltKeys.devicePath,
-                                      dir: (GestaltKeys.devicePath as NSString).deletingLastPathComponent)
-                }
-                .disabled(probe.running)
-                Text("Same target GestaltX edits (CacheExtra). Only for research — the BLE codec streaming goal never touches this. Requires iOS 27.x SystemGroup access; commit is in-place with readback verification and automatic recovery (GestaltX style).")
-                    .font(.caption2).foregroundColor(.secondary)
-            }
-
             if let dir = forge.dirPath {
                 Section("2. Entries in \(dir)") {
                     ForEach(forge.entries, id: \.self) { entry in

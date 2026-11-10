@@ -5,6 +5,7 @@
 
 import SwiftUI
 import CoreBluetooth
+import UniformTypeIdentifiers
 import os
 
 enum AudioRole: String, CaseIterable, Identifiable {
@@ -25,6 +26,9 @@ struct ContentView: View {
     @State private var channels: Int = 2
     @AppStorage("bf.hasSeenGuide") private var hasSeenGuide = false
     @State private var showGuideSheet = false
+    @State private var showImporter = false
+    @State private var selectedMediaURL: URL?
+    @State private var mediaScopeActive = false
 
     init() {
         let cm = CodecManager()
@@ -66,7 +70,7 @@ struct ContentView: View {
                     }
                     .pickerStyle(.segmented)
                     Text(role == .sender
-                         ? "Send microphone audio to another iPhone / BLE receiver."
+                         ? "Send a media file (LDAC/SBC/AAC/LC3) to another iPhone / BLE receiver."
                          : "Receive audio from another iPhone and play it here.")
                         .font(.caption).foregroundColor(.secondary)
                 }
@@ -147,14 +151,30 @@ struct ContentView: View {
                         }
                     }
 
-                    Section("Audio") {
-                        Button(pipeline.isRunning ? "Stop Capture" : "Start Capture") {
+                    Section("Media") {
+                        Button("音源ファイルを選ぶ") { showImporter = true }
+                        if let name = pipeline.fileName {
+                            HStack {
+                                Image(systemName: "music.note")
+                                Text(name).lineLimit(1)
+                                Spacer()
+                                Text("\(Int(pipeline.progress * 100))%")
+                                    .foregroundColor(.secondary)
+                            }
+                            .font(.caption)
+                            ProgressView(value: pipeline.progress)
+                        }
+                        Button(pipeline.isRunning ? "停止" : "再生して配信") {
                             if pipeline.isRunning {
                                 pipeline.stop()
-                            } else {
-                                do { try pipeline.startCapture() }
-                                catch { /* logged in pipeline */ }
+                            } else if let url = selectedMediaURL {
+                                do { try pipeline.startPlayback(url: url) }
+                                catch { pipeline.lastError = error.localizedDescription }
                             }
+                        }
+                        .disabled(selectedMediaURL == nil && !pipeline.isRunning)
+                        if let err = pipeline.lastError {
+                            Text(err).font(.caption).foregroundColor(.red)
                         }
                     }
                 } else {
@@ -188,6 +208,19 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showGuideSheet, onDismiss: { hasSeenGuide = true }) {
             NavigationView { guide }
+        }
+        .fileImporter(isPresented: $showImporter,
+                      allowedContentTypes: [.audio],
+                      allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                if mediaScopeActive {
+                    selectedMediaURL?.stopAccessingSecurityScopedResource()
+                }
+                mediaScopeActive = url.startAccessingSecurityScopedResource()
+                selectedMediaURL = url
+                do { try pipeline.startPlayback(url: url) }
+                catch { pipeline.lastError = error.localizedDescription }
+            }
         }
         .onChange(of: role) { _ in
             if pipeline.isRunning { pipeline.stop() }
