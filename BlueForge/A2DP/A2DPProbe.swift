@@ -19,11 +19,12 @@ import Combine
 /// Roots catalogued by worse_query as reachable via the containermanagerd
 /// escape (subset relevant to A2DP stack state).
 enum A2DPProbeRoot: String, CaseIterable, Identifiable {
-    case systemData = "/var/containers/Data/System"
-    case systemGroup = "/var/containers/Shared/SystemGroup"
-    case internalDaemon = "/var/mobile/Containers/Data/InternalDaemon"
-    case pluginKitPlugin = "/var/mobile/Containers/Data/PluginKitPlugin"
-    case appGroup = "/var/mobile/Containers/Shared/AppGroup"
+    // /private/var form: matches fsgetpath output and worse_query's own UI default.
+    case systemData = "/private/var/containers/Data/System"
+    case systemGroup = "/private/var/containers/Shared/SystemGroup"
+    case internalDaemon = "/private/var/mobile/Containers/Data/InternalDaemon"
+    case pluginKitPlugin = "/private/var/mobile/Containers/Data/PluginKitPlugin"
+    case appGroup = "/private/var/mobile/Containers/Shared/AppGroup"
 
     var id: String { rawValue }
 
@@ -113,7 +114,7 @@ final class A2DPProbe: ObservableObject {
     /// flags than everything else.
     private func altFlags(_ target: String) -> Bool {
         let major = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-        return major == 26 && target.hasPrefix(A2DPProbeRoot.appGroup.rawValue)
+        return major == 26 && target.contains("/Containers/Shared/AppGroup")
     }
 
     /// The configured group first, then every group this process is actually
@@ -166,21 +167,46 @@ final class A2DPProbe: ObservableObject {
         return lastHandle
     }
 
-    /// Enumerate one root via pathleak and return every visible child path
-    /// (paths can then be filtered with BluetoothPathFilter).
+    /// Enumerate one root: try the fast parentdir method first (extension on
+    /// the root directory + plain listing — works for AppGroup/System on 27.x),
+    /// then fall back to the parallel pathleak inode scan.
     func enumerate(root: A2DPProbeRoot = .systemData) async -> [String] {
+        var found = await enumerateParentDir(root: root)
+        if found.isEmpty {
+            found = await enumeratePathleak(root: root)
+        }
+        let related = found.filter { BluetoothPathFilter.isBluetoothRelated($0) }
+        append("scanned \(found.count) containers, \(related.count) bluetooth-related")
+        for path in related {
+            append("  ! \(path)")
+        }
+        return found
+    }
+
+    /// worse_query's "parentdir" method: consume an extension for the root
+    /// directory itself and list its children (cheap, but only some roots
+    /// accept a directory extension).
+    private func enumerateParentDir(root: A2DPProbeRoot) async -> [String] {
+        let rootPath = root.rawValue
+        let entries = listDir(rootPath)
+        guard !entries.isEmpty else {
+            append("parentdir: no extension/listing for \(rootPath), falling back to pathleak")
+            return []
+        }
+        append("parentdir: \(entries.count) entries under \(rootPath)")
+        return entries.map { rootPath + "/" + $0 }
+    }
+
+    private func enumeratePathleak(root: A2DPProbeRoot) async -> [String] {
         computeBaselineIfNeeded()
-        append("Enumerating \(root.rawValue) via pathleak (this is slow)…")
+        append("pathleak: scanning up to \(baselineInode) inodes for \(root.rawValue) (parallel, may take a while)…")
         let inodeLimit = baselineInode
         let rootPath = root.rawValue
         let found = await Task.detached(priority: .userInitiated) {
             (PathScannerEnumerate(rootPath, inodeLimit) as? [String]) ?? []
         }.value
-
-        let related = found.filter { BluetoothPathFilter.isBluetoothRelated($0) }
-        append("scanned \(found.count) containers, \(related.count) bluetooth-related")
-        for path in related {
-            append("  ! \(path)")
+        if found.isEmpty {
+            append("pathleak: 0 results — fsgetpath may be restricted on this OS/version")
         }
         return found
     }
