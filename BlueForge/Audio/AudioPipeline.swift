@@ -51,7 +51,7 @@ final class AudioPipeline: ObservableObject {
         var inputFormat = input.outputFormat(forBus: 0)
         if inputFormat.sampleRate == 0 {
             inputFormat = AVAudioFormat(standardFormatWithSampleRate: session.sampleRate,
-                                        channels: max(1, session.inputNumberOfChannels))!
+                                        channels: max(AVAudioChannelCount(1), session.inputNumberOfChannels))!
         }
 
         let target = codecManager.pcmFormat
