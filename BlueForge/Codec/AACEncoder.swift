@@ -99,10 +99,8 @@ final class AACEncoder: AudioCodec {
         guard !frame.isEmpty else { throw CodecError.decodingFailed("empty frame") }
 
         // Pack the compressed AAC frame into a compressed buffer.
-        guard let srcBuf = AVAudioCompressedBuffer(format: outFmt, packetCapacity: 1,
-                                                  maximumPacketSize: frame.count) else {
-            throw CodecError.decodingFailed("alloc compressed buffer")
-        }
+        let srcBuf = AVAudioCompressedBuffer(format: outFmt, packetCapacity: 1,
+                                            maximumPacketSize: frame.count)
         frame.withUnsafeBytes { raw in
             if let base = raw.baseAddress {
                 memcpy(srcBuf.data, base, frame.count)
