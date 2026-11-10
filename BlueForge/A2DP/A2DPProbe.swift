@@ -114,7 +114,7 @@ final class A2DPProbe: ObservableObject {
     private func consumeExtension(_ target: String) -> Int64 {
         let major = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
         let altFlags = major == 26 && target.hasPrefix(A2DPProbeRoot.appGroup.rawValue)
-        let handle = SandboxExtensionConsume(target as NSString, group as NSString, altFlags, false)
+        let handle = SandboxExtensionConsume(target, group, altFlags, false)
         switch handle {
         case -1: append("failed to access app group (\(group))")
         case -2: append("failed to resolve containermanagerd symbols (unsupported OS?)")
@@ -136,7 +136,7 @@ final class A2DPProbe: ObservableObject {
         let inodeLimit = baselineInode
         let rootPath = root.rawValue
         let found = await Task.detached(priority: .userInitiated) {
-            (PathScannerEnumerate(rootPath as NSString, inodeLimit) as? [String]) ?? []
+            (PathScannerEnumerate(rootPath, inodeLimit) as? [String]) ?? []
         }.value
 
         let related = found.filter { BluetoothPathFilter.isBluetoothRelated($0) }
