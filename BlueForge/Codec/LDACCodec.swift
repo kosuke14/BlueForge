@@ -46,7 +46,7 @@ final class LDACCodec: AudioCodec {
             return buffer.withUnsafeMutableBufferPointer { buf -> Int in
                 guard let b = buf.baseAddress else { return -1 }
                 return Int(ldac_encode(ctx, p.assumingMemoryBound(to: Int16.self), Int32(pcm.count),
-                                      b, Int32(buffer.count)))
+                                      b, Int32(buf.count)))
             }
         }
         guard n > 0 else { throw CodecError.encodingFailed("ldac encode failed") }
@@ -62,7 +62,7 @@ final class LDACCodec: AudioCodec {
             return buffer.withUnsafeMutableBufferPointer { buf -> Int in
                 guard let bp = buf.baseAddress else { return -1 }
                 return Int(ldac_decode(ctx, base.assumingMemoryBound(to: UInt8.self), Int32(frame.count),
-                                      UnsafeMutableRawPointer(bp).assumingMemoryBound(to: Int16.self), Int32(buffer.count)))
+                                      UnsafeMutableRawPointer(bp).assumingMemoryBound(to: Int16.self), Int32(buf.count)))
             }
         }
         guard n > 0 else { throw CodecError.decodingFailed("ldac decode failed") }
