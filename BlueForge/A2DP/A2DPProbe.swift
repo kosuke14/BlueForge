@@ -342,7 +342,9 @@ final class A2DPProbe: ObservableObject {
             return .identifier(String(cString: buf))
         }
 
-        let metadataPath = target + "/.com.apple.containermanagerd.metadata.plist"
+        // Canonical metadata file (visible in container listings):
+        // .com.apple.mobile_container_manager.metadata.plist
+        let metadataPath = target + "/.com.apple.mobile_container_manager.metadata.plist"
         if let data = try? Data(contentsOf: URL(fileURLWithPath: metadataPath)),
            let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
             if let ident = plist["MCMMetadataIdentifier"] as? String {
@@ -450,7 +452,7 @@ final class A2DPProbe: ObservableObject {
             append("xattr failed len=\(len) errno=\(errno) (93=ENOATTR 13=EACCES 1=EPERM)")
         }
 
-        let meta = path + "/.com.apple.containermanagerd.metadata.plist"
+        let meta = path + "/.com.apple.mobile_container_manager.metadata.plist"
         diagnoseOpen(meta, label: "metadata plist")
 
         let gp = path + "/Library/Preferences/.GlobalPreferences.plist"
@@ -484,6 +486,8 @@ final class A2DPProbe: ObservableObject {
             if fstat(fd, &tmp) == 0 { size = Int64(tmp.st_size) }
             close(fd)
             append("\(label) open ok: \(size) bytes")
+        } else if errno == 2 {
+            append("\(label) open failed errno=2 ENOENT (file absent — access itself works)")
         } else {
             append("\(label) open failed errno=\(errno) (2=ENOENT 13=EACCES 1=EPERM)")
         }
