@@ -1,0 +1,28 @@
+name: BlueForge
+options:
+  bundleIdPrefix: com.blueforge
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  BlueForge:
+    type: application
+    platform: iOS
+    sources:
+      - BlueForge
+      - AOSPBridge
+    info:
+      path: BlueForge/Resources/Info.plist
+    settings:
+      SWIFT_VERSION: "5.9"
+      PRODUCT_BUNDLE_IDENTIFIER: com.blueforge.app
+      SWIFT_OBJC_BRIDGING_HEADER: BlueForge/Bridging-Header.h
+      HEADER_SEARCH_PATHS: "$(SRCROOT)/AOSPBridge"
+  BlueForgeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/BlueForgeTests
+    dependencies:
+      - target: BlueForge
+    settings:
+      SWIFT_VERSION: "5.9"

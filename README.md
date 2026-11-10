@@ -1,0 +1,78 @@
+# BlueForge – Bluetooth Audio Codec Extender (jailed iOS)
+
+A prototype iOS app that encodes audio with a selectable Bluetooth audio codec
+and streams the encoded frames over BLE to a paired receiver (custom firmware).
+
+## Honest scope / limitations (read first)
+
+1. **Jailed iPhone cannot change classic A2DP codec negotiation.** iOS decides
+   the A2DP codec at the system level and does not expose it to apps. BlueForge
+   therefore does not (and cannot) make the system use LDAC/aptX for normal
+   Bluetooth headphones. It streams over **BLE with a custom GATT service**, so
+   the receiving device must run matching firmware.
+
+2. **Codec availability:**
+   - **AAC** – native via `AVAudioConverter`.
+   - **SBC** – software encoder included (approximate; replace polyphase
+     filterbank with the A2DP reference for production).
+   - **LDAC** – reference C impl ships in AOSP (`external/libldac`). Bridge
+     via `AOSPBridge/` (Obj-C++ wrapper). See "AOSP bridging".
+   - **LC3 (LE Audio)** – reference C impl ships in AOSP (`external/liblc3`).
+     Bridge via `AOSPBridge/`.
+   - **aptX / aptX HD / aptX LL / aptX Adaptive / aptX Lossless** – Qualcomm
+     proprietary IP, **not in AOSP**, cannot be reimplemented from public
+     sources. Require a Qualcomm license + SDK. Included as stubs only.
+
+3. **LE Audio** on iOS is supported for hearing aids (iOS 17+) but general
+   LE Audio broadcast/unicast to arbitrary devices is not yet exposed to apps.
+
+## AOSP bridging
+
+Create an `AOSPBridge/` target (Objective-C++) that compiles the AOSP C sources:
+
+- `external/libldac/src/` → `libldacBT_enc`, `libldacBT_dec`
+- `external/liblc3/src/` → `lc3_encoder`, `lc3_decoder`
+
+Expose a small C/ObjC API to Swift, e.g.:
+
+```objc
+@interface LDACBridge : NSObject
+- (instancetype)initWithSampleRate:(int)sr channels:(int)ch bitrate:(int)br;
+- (NSData *)encodePCM:(NSData *)pcm;
+@end
+```
+
+Then update `LDACCodec` / `LC3Codec` to call the bridge instead of throwing.
+
+## Status
+
+Source-complete prototype (no Xcode available in this environment to compile):
+- Codec abstraction + manager, AAC (native), SBC (encode+decode, simplified filterbank),
+  LDAC/LC3 façades + AOSP bridge scaffolding, aptX family stubs.
+- BLE central service with reconnect/backoff, MTU chunking.
+- AVAudioEngine capture pipeline, SwiftUI UI with codec/format controls.
+- XCTest suite, XcodeGen project, AOSP integration guide.
+
+Remaining (requires Xcode/device/licensing):
+- Compile & sign on a physical device.
+- Wire AOSP libldac/liblc3 via AOSPBridge.
+- Replace simplified SBC filterbank with A2DP reference.
+- Obtain Qualcomm license for aptX family.
+
+## Building
+
+Open `BlueForge.xcodeproj` in Xcode 15+, set signing team, build for a physical
+device (BLE requires hardware). The included `.xcodeproj` is a placeholder; use
+Xcode's "New Project → App" and add these source files, or generate with
+`xcodegen`.
+
+## Testing codecs
+
+Unit tests should round-trip encode→decode for SBC/AAC/LDAC/LC3 and assert
+bit-exact-ish reconstruction (lossy codecs: SNR threshold).
+
+## License note
+
+aptX family codecs are licensed technology. Do not attempt to reverse-engineer
+or ship them without authorization.
+```
