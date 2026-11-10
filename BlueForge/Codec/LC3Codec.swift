@@ -10,7 +10,7 @@ final class LC3Codec: AudioCodec {
 
     private var format: PCMFormat!
     private var bitrate: Int = 0
-    var ctx: UnsafeMutablePointer<LC3Context>?
+    var ctx: OpaquePointer?
 
     func configure(format: PCMFormat, bitrate: Int) throws {
         let sr = Int(format.sampleRate)
@@ -42,7 +42,7 @@ final class LC3Codec: AudioCodec {
         var buffer = [UInt8](repeating: 0, count: max(1024, minBytes))
         // ensure enough capacity: total frame block bytes unknown; use generous buffer
         buffer = [UInt8](repeating: 0, count: 4096)
-        let n = pcm.withUnsafeBytes { pro -> Int in
+        let n = pcm.withUnsafeBytes { (pro: UnsafeRawBufferPointer) -> Int in
             guard let p = pro.baseAddress else { return -1 }
             return buffer.withUnsafeMutableBufferPointer { buf -> Int in
                 guard let b = buf.baseAddress else { return -1 }
@@ -60,12 +60,12 @@ final class LC3Codec: AudioCodec {
         let channels = format?.channels ?? 1
         let outBytes = fs * channels * 2
         var buffer = [UInt8](repeating: 0, count: max(outBytes, 4096))
-        let n = frame.withUnsafeBytes { raw -> Int in
+        let n = frame.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Int in
             guard let base = raw.baseAddress else { return -1 }
             return buffer.withUnsafeMutableBufferPointer { buf -> Int in
                 guard let bp = buf.baseAddress else { return -1 }
                 return Int(lc3_decode_frame(ctx, base.assumingMemoryBound(to: UInt8.self), Int32(frame.count),
-                                           bp.assumingMemoryBound(to: Int16.self), Int32(buffer.count)))
+                                           UnsafeMutableRawPointer(bp).assumingMemoryBound(to: Int16.self), Int32(buffer.count)))
             }
         }
         guard n > 0 else { throw CodecError.decodingFailed("lc3 decode failed") }

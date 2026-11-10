@@ -5,7 +5,7 @@ final class SBCEncoder: AudioCodec {
 
     private var format: PCMFormat!
     private var bitrate: Int = 0
-    var ctx: UnsafeMutablePointer<SBCContext>?
+    var ctx: OpaquePointer?
 
     func configure(format: PCMFormat, bitrate: Int) throws {
         guard format.channels == 1 || format.channels == 2 else {
@@ -47,7 +47,7 @@ final class SBCEncoder: AudioCodec {
         var buffer = [UInt8](repeating: 0, count: fl)
         let n = buffer.withUnsafeMutableBufferPointer { buf -> Int in
             guard let base = buf.baseAddress else { return -1 }
-            return pcm.withUnsafeBytes { pro -> Int in
+            return pcm.withUnsafeBytes { (pro: UnsafeRawBufferPointer) -> Int in
                 guard let p = pro.baseAddress else { return -1 }
                 return Int(sbc_encode_frame(ctx, p.assumingMemoryBound(to: Int16.self),
                                            Int32(pcm.count),
@@ -62,13 +62,13 @@ final class SBCEncoder: AudioCodec {
         guard let ctx = ctx else { throw CodecError.decodingFailed("not configured") }
         let cs = Int(sbc_codesize(ctx))
         var buffer = [UInt8](repeating: 0, count: cs)
-        let n = frame.withUnsafeBytes { raw -> Int in
+        let n = frame.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Int in
             guard let base = raw.baseAddress else { return -1 }
             return buffer.withUnsafeMutableBufferPointer { buf -> Int in
                 guard let bp = buf.baseAddress else { return -1 }
                 return Int(sbc_decode_frame(ctx, base.assumingMemoryBound(to: UInt8.self),
                                            Int32(frame.count),
-                                           bp.assumingMemoryBound(to: Int16.self),
+                                           UnsafeMutableRawPointer(bp).assumingMemoryBound(to: Int16.self),
                                            Int32(cs)))
             }
         }

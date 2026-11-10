@@ -10,7 +10,7 @@ final class LDACCodec: AudioCodec {
 
     private var format: PCMFormat!
     private var bitrate: Int = 0
-    var ctx: UnsafeMutablePointer<LDACContext>?
+    var ctx: OpaquePointer?
 
     func configure(format: PCMFormat, bitrate: Int) throws {
         guard [44100, 48000, 88200, 96000].contains(Int(format.sampleRate)) else {
@@ -41,7 +41,7 @@ final class LDACCodec: AudioCodec {
             throw CodecError.encodingFailed("LDAC needs at least 256 samples")
         }
         var buffer = [UInt8](repeating: 0, count: 2048)
-        let n = pcm.withUnsafeBytes { pro -> Int in
+        let n = pcm.withUnsafeBytes { (pro: UnsafeRawBufferPointer) -> Int in
             guard let p = pro.baseAddress else { return -1 }
             return buffer.withUnsafeMutableBufferPointer { buf -> Int in
                 guard let b = buf.baseAddress else { return -1 }
@@ -57,12 +57,12 @@ final class LDACCodec: AudioCodec {
         guard let ctx = ctx else { throw CodecError.decodingFailed("not configured") }
         let cs = 2 * 128 * (format?.channels ?? 2) * 2
         var buffer = [UInt8](repeating: 0, count: max(cs, 4096))
-        let n = frame.withUnsafeBytes { raw -> Int in
+        let n = frame.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Int in
             guard let base = raw.baseAddress else { return -1 }
             return buffer.withUnsafeMutableBufferPointer { buf -> Int in
                 guard let bp = buf.baseAddress else { return -1 }
                 return Int(ldac_decode(ctx, base.assumingMemoryBound(to: UInt8.self), Int32(frame.count),
-                                      bp.assumingMemoryBound(to: Int16.self), Int32(buffer.count)))
+                                      UnsafeMutableRawPointer(bp).assumingMemoryBound(to: Int16.self), Int32(buffer.count)))
             }
         }
         guard n > 0 else { throw CodecError.decodingFailed("ldac decode failed") }
