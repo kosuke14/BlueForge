@@ -73,6 +73,11 @@ Source-complete prototype (validated C bridges on Linux; iOS compile via CI):
 - BLE central sender and BLE peripheral receiver with length-prefixed frames.
 - AVAudioEngine capture conversion, codec-sized framing, and playback.
 - SwiftUI role/codec/format controls, XCTest suite, XcodeGen project.
+- A2DP stack introspection via the worse_query sandbox-escape technique
+  (containermanagerd extension + pathleak enumeration). **Read-only on a jailed
+  device** — it reveals bluetoothd state/codec signals, it cannot re-negotiate
+  the A2DP codec; see `docs/SANDBOX_A2DP.md` and the in-app
+  "A2DP system access" screen.
 
 Remaining (requires Xcode/device/licensing):
 - Compile & sign on a physical device.
@@ -94,5 +99,5 @@ bit-exact-ish reconstruction (lossy codecs: SNR threshold).
 ## License note
 
 aptX family codecs are licensed technology. Do not attempt to reverse-engineer
-or ship them without authorization.
-```
+or ship them without authorization. Files under `BlueForge/Escape/` are derived
+from forcequitOS/worse_query (GPL-3.0).

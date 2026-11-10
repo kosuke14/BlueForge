@@ -101,6 +101,14 @@ struct ContentView: View {
                     .onChange(of: bitrateKbps) { _ in applyFormat() }
                 }
 
+                Section("A2DP system access") {
+                    NavigationLink("System probe / hooks (sandbox)") {
+                        SystemProbeView()
+                    }
+                    Text("Uses the worse_query containermanagerd technique to enumerate and read Bluetooth stack state. Jailed: read-only, see docs/SANDBOX_A2DP.md.")
+                        .font(.caption2).foregroundColor(.secondary)
+                }
+
                 if role == .sender {
                     Section("Bluetooth (BLE)") {
                         Text("State: \(stateString(ble.state))")

@@ -35,6 +35,7 @@ targets:
       SWIFT_VERSION: "5.9"
       PRODUCT_BUNDLE_IDENTIFIER: com.blueforge.app
       SWIFT_OBJC_BRIDGING_HEADER: BlueForge/Bridging-Header.h
+      CODE_SIGN_ENTITLEMENTS: BlueForge/Resources/BlueForge.entitlements
       HEADER_SEARCH_PATHS: "$(SRCROOT)/AOSPBridge $(SRCROOT)/AOSPBridge/SBC $(SRCROOT)/AOSPBridge/LDAC $(SRCROOT)/AOSPBridge/LC3 $(SRCROOT)/AOSPBridge/LDACDEC"
   BlueForgeTests:
     type: bundle.unit-test

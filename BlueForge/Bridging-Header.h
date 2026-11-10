@@ -5,4 +5,7 @@
 #import "LDACBridge.h"
 #import "LC3Bridge.h"
 
+#import "SandboxEscape.h"
+#import "PathScanner.h"
+
 #endif
