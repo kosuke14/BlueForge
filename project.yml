@@ -10,6 +10,12 @@ targets:
     sources:
       - BlueForge
       - path: AOSPBridge/SBC
+        excludes:
+          - "sbc_primitives_armv6.c"
+          - "sbc_primitives_iwmmxt.c"
+          - "sbc_primitives_mmx.c"
+          - "sbc_primitives_neon.c"
+          - "sbc_primitives_sse.c"
       - path: AOSPBridge/SBCBridge.h
       - path: AOSPBridge/SBCBridge.c
       - path: AOSPBridge/LDAC/ldacBT.c
