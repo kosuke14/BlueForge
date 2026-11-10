@@ -12,6 +12,10 @@ final class LDACCodec: AudioCodec {
     private var bitrate: Int = 0
     var ctx: OpaquePointer?
 
+    var pcmFrameBytes: Int {
+        2 * 128 * (format?.channels ?? 2) * 2
+    }
+
     func configure(format: PCMFormat, bitrate: Int) throws {
         guard [44100, 48000, 88200, 96000].contains(Int(format.sampleRate)) else {
             throw CodecError.unsupportedFormat("LDAC sample rate")

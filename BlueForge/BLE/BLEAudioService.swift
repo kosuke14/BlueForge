@@ -54,14 +54,19 @@ final class BLEAudioService: NSObject, ObservableObject {
         if let p = peripheral { central.cancelPeripheralConnection(p) }
     }
 
-    /// Send one encoded audio frame. Frames are chunked to fit MTU.
+    /// Send one encoded audio frame. Frames are length-prefixed and chunked to fit MTU.
     func sendFrame(_ data: Data) {
         guard let p = peripheral, let ch = audioChar else { return }
+        var packet = Data(capacity: data.count + 2)
+        var length = UInt16(clamping: data.count).littleEndian
+        withUnsafeBytes(of: &length) { packet.append(contentsOf: $0) }
+        packet.append(data)
+
         let mtu = p.maximumWriteValueLength(for: .withoutResponse)
         var offset = 0
-        while offset < data.count {
-            let len = min(mtu, data.count - offset)
-            let chunk = data.subdata(in: offset..<(offset+len))
+        while offset < packet.count {
+            let len = min(mtu, packet.count - offset)
+            let chunk = packet.subdata(in: offset..<(offset+len))
             p.writeValue(chunk, for: ch, type: .withoutResponse)
             offset += len
         }

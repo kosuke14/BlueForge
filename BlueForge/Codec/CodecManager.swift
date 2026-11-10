@@ -15,6 +15,8 @@ final class CodecManager: ObservableObject {
     @Published private(set) var current: AudioCodec?
     @Published private(set) var lastError: String?
 
+    var pcmFormat: PCMFormat { format }
+
     private var format: PCMFormat = PCMFormat(sampleRate: 48000, channels: 2, bitsPerSample: 16)
     private var bitrate: Int = 320_000
 

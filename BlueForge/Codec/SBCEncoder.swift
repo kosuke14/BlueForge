@@ -7,6 +7,11 @@ final class SBCEncoder: AudioCodec {
     private var bitrate: Int = 0
     var ctx: OpaquePointer?
 
+    var pcmFrameBytes: Int {
+        guard let ctx = ctx else { return 0 }
+        return Int(sbc_codesize(ctx))
+    }
+
     func configure(format: PCMFormat, bitrate: Int) throws {
         guard format.channels == 1 || format.channels == 2 else {
             throw CodecError.unsupportedFormat("SBC supports 1 or 2 channels")

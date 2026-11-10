@@ -12,6 +12,11 @@ final class LC3Codec: AudioCodec {
     private var bitrate: Int = 0
     var ctx: OpaquePointer?
 
+    var pcmFrameBytes: Int {
+        guard let ctx = ctx else { return 0 }
+        return Int(lc3_frame_samples_count(ctx)) * (format?.channels ?? 1) * 2
+    }
+
     func configure(format: PCMFormat, bitrate: Int) throws {
         let sr = Int(format.sampleRate)
         guard [8000,16000,24000,32000,48000].contains(sr) else {

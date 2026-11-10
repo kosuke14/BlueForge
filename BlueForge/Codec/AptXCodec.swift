@@ -19,6 +19,8 @@ final class AptXFamilyCodec: AudioCodec {
     private var format: PCMFormat!
     private var bitrate: Int = 0
 
+    var pcmFrameBytes: Int { 0 }
+
     func configure(format: PCMFormat, bitrate: Int) throws {
         self.format = format
         self.bitrate = bitrate

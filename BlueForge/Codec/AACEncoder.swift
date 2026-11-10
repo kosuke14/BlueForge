@@ -17,6 +17,10 @@ final class AACEncoder: AudioCodec {
     private var inputFormat: AVAudioFormat?
     private var outputFormat: AVAudioFormat?
 
+    var pcmFrameBytes: Int {
+        1024 * (format?.channels ?? 2) * 2
+    }
+
     func configure(format: PCMFormat, bitrate: Int) throws {
         self.format = format
         guard let inFmt = AVAudioFormat(commonFormat: .pcmFormatInt16,

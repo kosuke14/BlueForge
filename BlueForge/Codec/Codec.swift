@@ -73,6 +73,8 @@ protocol AudioCodec {
     func decode(frame: Data) throws -> Data
     /// Reset internal state (e.g. on stream restart).
     func reset()
+    /// Interleaved PCM bytes consumed by one encode call. 0 when unknown.
+    var pcmFrameBytes: Int { get }
 }
 
 /// Static capability info for a codec.

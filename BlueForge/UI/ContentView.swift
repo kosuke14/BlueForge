@@ -7,11 +7,19 @@ import SwiftUI
 import CoreBluetooth
 import os
 
+enum AudioRole: String, CaseIterable, Identifiable {
+    case sender = "Sender"
+    case receiver = "Receiver"
+    var id: String { rawValue }
+}
+
 struct ContentView: View {
     @StateObject private var codecManager: CodecManager
     @StateObject private var ble: BLEAudioService
     @StateObject private var pipeline: AudioPipeline
+    @StateObject private var receiver: ReceiverPipeline
 
+    @State private var role: AudioRole = .sender
     @State private var bitrateKbps: Int = 320
     @State private var sampleRate: Int = 48000
     @State private var channels: Int = 2
@@ -22,11 +30,25 @@ struct ContentView: View {
         _codecManager = StateObject(wrappedValue: cm)
         _ble = StateObject(wrappedValue: b)
         _pipeline = StateObject(wrappedValue: AudioPipeline(codecManager: cm, ble: b))
+        _receiver = StateObject(wrappedValue: ReceiverPipeline(codecManager: cm))
     }
 
     var body: some View {
         NavigationView {
             Form {
+                Section("Mode") {
+                    Picker("Role", selection: $role) {
+                        ForEach(AudioRole.allCases) { r in
+                            Text(r.rawValue).tag(r)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    Text(role == .sender
+                         ? "Send microphone audio to another iPhone / BLE receiver."
+                         : "Receive audio from another iPhone and play it here.")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+
                 Section("Codec") {
                     Picker("Selected", selection: $codecManager.selected) {
                         ForEach(CodecID.allCases) { c in
@@ -79,28 +101,51 @@ struct ContentView: View {
                     .onChange(of: bitrateKbps) { _ in applyFormat() }
                 }
 
-                Section("Bluetooth (BLE)") {
-                    Text("State: \(stateString(ble.state))")
-                    HStack {
-                        Text("Connected")
-                        Spacer()
-                        Text(ble.connected ? "Yes" : "No").foregroundColor(ble.connected ? .green : .secondary)
+                if role == .sender {
+                    Section("Bluetooth (BLE)") {
+                        Text("State: \(stateString(ble.state))")
+                        HStack {
+                            Text("Connected")
+                            Spacer()
+                            Text(ble.connected ? "Yes" : "No").foregroundColor(ble.connected ? .green : .secondary)
+                        }
+                        Button(ble.connected ? "Disconnect" : "Scan") {
+                            if ble.connected { ble.disconnect() } else { ble.startScan() }
+                        }
+                        List(ble.discoveredPeripherals, id: \.identifier) { p in
+                            Button(p.name ?? p.identifier.uuidString) { ble.connect(p) }
+                        }
                     }
-                    Button(ble.connected ? "Disconnect" : "Scan") {
-                        if ble.connected { ble.disconnect() } else { ble.startScan() }
-                    }
-                    List(ble.discoveredPeripherals, id: \.identifier) { p in
-                        Button(p.name ?? p.identifier.uuidString) { ble.connect(p) }
-                    }
-                }
 
-                Section("Audio") {
-                    Button(pipeline.isRunning ? "Stop Capture" : "Start Capture") {
-                        if pipeline.isRunning {
-                            pipeline.stop()
-                        } else {
-                            do { try pipeline.startCapture() }
-                            catch { /* logged in pipeline */ }
+                    Section("Audio") {
+                        Button(pipeline.isRunning ? "Stop Capture" : "Start Capture") {
+                            if pipeline.isRunning {
+                                pipeline.stop()
+                            } else {
+                                do { try pipeline.startCapture() }
+                                catch { /* logged in pipeline */ }
+                            }
+                        }
+                    }
+                } else {
+                    Section("Receiver (BLE)") {
+                        Text("State: \(stateString(receiver.peripheralState))")
+                        HStack {
+                            Text("Advertising")
+                            Spacer()
+                            Text(receiver.isAdvertising ? "Yes" : "No")
+                                .foregroundColor(receiver.isAdvertising ? .green : .secondary)
+                        }
+                        HStack {
+                            Text("Subscribers")
+                            Spacer()
+                            Text("\(receiver.subscriberCount)")
+                        }
+                        Button(receiver.isRunning ? "Stop Receiver" : "Start Receiver") {
+                            if receiver.isRunning { receiver.stop() } else { receiver.start() }
+                        }
+                        if let err = receiver.lastError {
+                            Text(err).font(.caption).foregroundColor(.red)
                         }
                     }
                 }
@@ -108,6 +153,10 @@ struct ContentView: View {
             .navigationTitle("BlueForge")
         }
         .onAppear { applyFormat() }
+        .onChange(of: role) { _ in
+            if pipeline.isRunning { pipeline.stop() }
+            if receiver.isRunning { receiver.stop() }
+        }
     }
 
     private func applyFormat() {
