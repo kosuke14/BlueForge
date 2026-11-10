@@ -13,7 +13,7 @@
 
 #include "sbc_primitives.h"
 
-#if defined(__GNUC__) && defined(__ARM_NEON__) && \
+#if defined(__GNUC__) && defined(__ARM_NEON__) && !defined(__aarch64__) && \
 		!defined(SBC_HIGH_PRECISION) && (SCALE_OUT_BITS == 15)
 
 #define SBC_BUILD_WITH_NEON_SUPPORT
