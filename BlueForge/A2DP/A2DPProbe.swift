@@ -267,17 +267,19 @@ final class A2DPProbe: ObservableObject {
             guard let self else { return }
             for root in A2DPProbeRoot.allCases {
                 let found = await self.enumerate(root: root)
-                let related = found.filter(BluetoothPathFilter.isBluetoothRelated)
-                let candidates = Array(related.prefix(24))
-                for path in candidates {
-                    let f = self.read(path)
+                let hits = await self.identifyBluetooth(in: found)
+                if hits.isEmpty {
+                    self.append("no bluetooth-owned containers under \(root.rawValue)")
+                }
+                for hit in hits {
+                    let f = self.read(hit.path)
                     if f.readable || !f.summaryLines.isEmpty {
                         self.findings.append(f)
                     }
                     // Peek inside known preference locations (read
                     // tolerates nonexistent targets).
                     for sub in BluetoothPathFilter.preferencesSubpaths {
-                        let subPath = path + "/" + sub
+                        let subPath = hit.path + "/" + sub
                         let sf = self.read(subPath)
                         if sf.readable {
                             self.findings.append(sf)
@@ -295,6 +297,40 @@ final class A2DPProbe: ObservableObject {
         var text = "BlueForge A2DP probe — \(Date())\n\n"
         text += log
         return text
+    }
+
+    /// Read the containermanager ownership xattr under an extension. Container
+    /// directories are UUID-named, so this (not the path) is how Bluetooth
+    /// containers are identified — same as worse_query's console.
+    func containerIdentifier(_ target: String) -> String? {
+        let handle = consumeFor(target)
+        guard handle > 0 else { return nil }
+        defer { SandboxExtensionRelease(handle) }
+        var buf = [CChar](repeating: 0, count: 512)
+        let len = getxattr(target, "com.apple.containermanager.identifier", &buf, 511, 0, 0)
+        guard len > 0 else { return nil }
+        return String(cString: buf)
+    }
+
+    /// One extension per container: resolve ownership identifiers and keep the
+    /// Bluetooth-related ones. Runs sequentially (each consume is an XPC round
+    /// trip) with progress lines so long roots stay observable.
+    func identifyBluetooth(in containers: [String]) async -> [(id: String, path: String)] {
+        var hits: [(id: String, path: String)] = []
+        let total = containers.count
+        for (index, path) in containers.enumerated() {
+            if let ident = containerIdentifier(path) {
+                if BluetoothPathFilter.isBluetoothRelated(ident) {
+                    append("  ! \(ident) → \(path)")
+                    hits.append((ident, path))
+                }
+            }
+            if (index + 1) % 50 == 0 {
+                append("identifying \(index + 1)/\(total)…")
+                await Task.yield()
+            }
+        }
+        return hits
     }
 
     /// List a directory under an extension (full names, no decoration).

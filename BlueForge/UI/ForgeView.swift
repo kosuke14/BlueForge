@@ -35,10 +35,15 @@ struct ForgeView: View {
                 .disabled(probe.running)
 
                 ForEach(forge.candidates) { candidate in
-                    Button(candidate.path) {
+                    Button(candidate.owner) {
                         forge.inspectDir(candidate.path)
                     }
                     .foregroundColor(candidate.writable ? .green : .secondary)
+                    Text(candidate.path)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                     HStack {
                         Text(candidate.writable
                              ? "WRITABLE — " + candidate.note

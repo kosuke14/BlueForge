@@ -71,6 +71,7 @@ final class A2DPStateForge: ObservableObject {
     struct ForgeCandidate: Identifiable {
         let id: UUID
         let path: String
+        let owner: String
         let writable: Bool
         let note: String
     }
@@ -94,14 +95,17 @@ final class A2DPStateForge: ObservableObject {
             guard let self else { return }
             for root in A2DPProbeRoot.allCases {
                 let found = await probe.enumerate(root: root)
-                let related = found.filter(BluetoothPathFilter.isBluetoothRelated).prefix(8)
+                // Container dirs are UUID-named; ownership comes from the
+                // containermanager xattr, not the path.
+                let related = await probe.identifyBluetooth(in: found)
                 if related.isEmpty {
-                    self.append("no bluetooth-related containers under \(root.rawValue)")
+                    self.append("no bluetooth-owned containers under \(root.rawValue)")
                 }
-                for path in related {
-                    let (writable, note) = self.probeWritable(path)
-                    self.append("\(writable ? "WRITABLE" : "read-only") \(path) (\(note))")
-                    self.candidates.append(.init(id: UUID(), path: path,
+                for hit in related {
+                    let (writable, note) = self.probeWritable(hit.path)
+                    self.append("\(writable ? "WRITABLE" : "read-only") \(hit.id) (\(note))")
+                    self.candidates.append(.init(id: UUID(), path: hit.path,
+                                                 owner: hit.id,
                                                  writable: writable, note: note))
                 }
             }
