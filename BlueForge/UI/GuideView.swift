@@ -21,6 +21,8 @@ struct GuideView: View {
     @ObservedObject var ble: BLEAudioService
     @ObservedObject var pipeline: AudioPipeline
     @ObservedObject var receiver: ReceiverPipeline
+    @State private var showImporter = false
+    @State private var mediaURL: URL?
 
     var body: some View {
         ScrollView {
