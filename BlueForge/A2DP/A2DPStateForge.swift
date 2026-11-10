@@ -275,7 +275,7 @@ final class A2DPStateForge: ObservableObject {
             throw PLISTForgeError.serializationFailed
         }
         do {
-            fileHandle.truncate(atOffset: 0)
+            try fileHandle.truncate(atOffset: 0)
             try fileHandle.write(contentsOf: data)
             try fileHandle.close()
         } catch {
@@ -380,11 +380,11 @@ final class A2DPStateForge: ObservableObject {
 
             try moveIntoPlace(newData, target: path, in: dir, fm: fm)
             append("forged \(path) — \(changed.count) key\(changed.count == 1 ? "" : "s"): "
-                   + changed.map { $0.joined(separator: ".").sorted().joined(separator: ", ") })
+                   + changed.map { $0.joined(separator: ".") }.sorted().joined(separator: ", "))
             append("toggle Bluetooth (Control Center off/on) so bluetoothd reloads its state before judging the result.")
 
             ForgeHistory.append(.init(date: Date(), target: path,
-                                      changedKeys: changed.map { $0.joined(separator: ".").sorted() },
+                                      changedKeys: changed.map { $0.joined(separator: ".") }.sorted(),
                                       writable: true, note: "forged"))
             history = ForgeHistory.load()
         } catch {
