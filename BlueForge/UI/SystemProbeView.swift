@@ -31,6 +31,12 @@ struct SystemProbeView: View {
                 }
                 .disabled(probe.running)
 
+                Button("Diagnostics (deep, 1 container)") {
+                    probe.appGroupOverride = appGroup == "group.com.blueforge.app" ? nil : appGroup
+                    probe.runDiagnostics()
+                }
+                .disabled(probe.running)
+
                 if !probe.findings.isEmpty {
                     NavigationLink("Findings (\(probe.findings.count))") {
                         List(probe.findings) { finding in

