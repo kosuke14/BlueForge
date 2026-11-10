@@ -140,6 +140,7 @@ final class A2DPProbe: ObservableObject {
     }
 
     private var loggedDefaultGroupRejection = false
+    private var loggedWorkingGroup: String?
 
     /// Consume an extension trying every usable App Group (the -4 case is
     /// fixed by creating Library/Caches, then retrying — same as GestaltX).
@@ -154,7 +155,13 @@ final class A2DPProbe: ObservableObject {
                 ensureCaches(candidate)
                 handle = SandboxExtensionConsume(target, candidate, alt, false)
             }
-            if handle > 0 { return handle }
+            if handle > 0 {
+                if loggedWorkingGroup != candidate {
+                    loggedWorkingGroup = candidate
+                    append("sandbox extension issued via group \(candidate)")
+                }
+                return handle
+            }
             lastHandle = handle
             if index == 0 {
                 if handle == -5 {
