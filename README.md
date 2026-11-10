@@ -44,6 +44,23 @@ Expose a small C/ObjC API to Swift, e.g.:
 
 Then update `LDACCodec` / `LC3Codec` to call the bridge instead of throwing.
 
+## iPhone-to-iPhone mode
+
+The app can act as either a BLE **sender** or **receiver**, so two iPhones (or
+iPhone + iPad) can stream audio directly without custom firmware.
+
+1. Install the same build on both devices.
+2. On the receiver: choose **Role → Receiver**, select the same codec/format/
+   bitrate as the sender, then tap **Start Receiver**. The device advertises
+   `BlueForge RX` with the custom service.
+3. On the sender: choose **Role → Sender**, match the codec/format/bitrate,
+   tap **Scan**, select `BlueForge RX`, then tap **Start Capture**.
+
+Both apps must stay in the foreground for reliable advertising/connection.
+Start with AAC or SBC at 128–256 kbps; LDAC at 990 kbps may exceed practical
+BLE throughput. Codec/format are not negotiated automatically — both sides
+must match. Received frames are decoded and played through AVAudioEngine.
+
 ## Status
 
 Source-complete prototype (validated C bridges on Linux; iOS compile via CI):
@@ -53,13 +70,14 @@ Source-complete prototype (validated C bridges on Linux; iOS compile via CI):
 - LDAC (AOSP libldac encoder + MIT decoder via AOSPBridge).
 - LC3 / LE Audio (AOSP liblc3 via AOSPBridge).
 - aptX family: stubs only (Qualcomm proprietary; license required).
-- BLE central service with reconnect/backoff, MTU chunking, frame receive callback.
-- AVAudioEngine capture pipeline, SwiftUI UI with codec/format controls.
-- XCTest suite, XcodeGen project, AOSP integration guide.
+- BLE central sender and BLE peripheral receiver with length-prefixed frames.
+- AVAudioEngine capture conversion, codec-sized framing, and playback.
+- SwiftUI role/codec/format controls, XCTest suite, XcodeGen project.
 
 Remaining (requires Xcode/device/licensing):
 - Compile & sign on a physical device.
 - Obtain Qualcomm license for aptX family.
+- Add sequence numbers / packet-loss recovery for production streaming.
 
 ## Building
 
