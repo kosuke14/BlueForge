@@ -139,12 +139,16 @@ final class A2DPProbe: ObservableObject {
         }
     }
 
+    private var loggedDefaultGroupRejection = false
+
     /// Consume an extension trying every usable App Group (the -4 case is
     /// fixed by creating Library/Caches, then retrying — same as GestaltX).
+    /// The default group is normally rejected once per process (the fallback
+    /// signed group is the one that works), so that failure logs only once.
     func consumeFor(_ target: String) -> Int64 {
         let alt = altFlags(target)
         var lastHandle: Int64 = -1
-        for candidate in candidateGroups() {
+        for (index, candidate) in candidateGroups().enumerated() {
             var handle = SandboxExtensionConsume(target, candidate, alt, false)
             if handle == -4 {
                 ensureCaches(candidate)
@@ -152,13 +156,30 @@ final class A2DPProbe: ObservableObject {
             }
             if handle > 0 { return handle }
             lastHandle = handle
-            switch handle {
-            case -1: append("no accessible container for \(candidate)")
-            case -2: append("failed to resolve containermanagerd symbols (unsupported OS?)")
-            case -3: append("failed to create query")
-            case -5: append("query rejected")
-            case -6: append("kernel refused extension issue")
-            default: break
+            if index == 0 {
+                if handle == -5 {
+                    if !loggedDefaultGroupRejection {
+                        loggedDefaultGroupRejection = true
+                        append("query rejected for default group \(candidate) — using signed groups")
+                    }
+                } else {
+                    switch handle {
+                    case -1: append("no accessible container for \(candidate)")
+                    case -2: append("failed to resolve containermanagerd symbols (unsupported OS?)")
+                    case -3: append("failed to create query")
+                    case -6: append("kernel refused extension issue")
+                    default: break
+                    }
+                }
+            } else {
+                switch handle {
+                case -1: append("no accessible container for \(candidate)")
+                case -2: append("failed to resolve containermanagerd symbols (unsupported OS?)")
+                case -3: append("failed to create query")
+                case -5: append("query rejected (\(candidate))")
+                case -6: append("kernel refused extension issue")
+                default: break
+                }
             }
         }
         if lastHandle == -255 {
@@ -299,37 +320,76 @@ final class A2DPProbe: ObservableObject {
         return text
     }
 
-    /// Read the containermanager ownership xattr under an extension. Container
-    /// directories are UUID-named, so this (not the path) is how Bluetooth
-    /// containers are identified — same as worse_query's console.
-    func containerIdentifier(_ target: String) -> String? {
-        let handle = consumeFor(target)
-        guard handle > 0 else { return nil }
-        defer { SandboxExtensionRelease(handle) }
-        var buf = [CChar](repeating: 0, count: 512)
-        let len = getxattr(target, "com.apple.containermanager.identifier", &buf, 511, 0, 0)
-        guard len > 0 else { return nil }
-        return String(cString: buf)
+    enum ContainerClass {
+        case identifier(String)
+        case bluetoothPrefs
+        case unknown
+        case inaccessible
     }
 
-    /// One extension per container: resolve ownership identifiers and keep the
-    /// Bluetooth-related ones. Runs sequentially (each consume is an XPC round
-    /// trip) with progress lines so long roots stay observable.
+    /// Classify a UUID-named container with a single extension consume:
+    ///  1. `com.apple.containermanager.identifier` xattr (worse_query console),
+    ///  2. `.com.apple.containermanagerd.metadata.plist` (MCMMetadataIdentifier),
+    ///  3. fallback: presence of `Library/Preferences/com.apple.bluetooth.plist`.
+    func classify(_ target: String) -> ContainerClass {
+        let handle = consumeFor(target)
+        guard handle > 0 else { return .inaccessible }
+        defer { SandboxExtensionRelease(handle) }
+
+        var buf = [CChar](repeating: 0, count: 512)
+        let len = getxattr(target, "com.apple.containermanager.identifier", &buf, 511, 0, 0)
+        if len > 0 {
+            return .identifier(String(cString: buf))
+        }
+
+        let metadataPath = target + "/.com.apple.containermanagerd.metadata.plist"
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: metadataPath)),
+           let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
+            if let ident = plist["MCMMetadataIdentifier"] as? String {
+                return .identifier(ident)
+            }
+            if let info = plist["MCMMetadataInfo"] as? [String: Any],
+               let ident = info["MCMMetadataIdentifier"] as? String {
+                return .identifier(ident)
+            }
+        }
+
+        let pref = target + "/Library/Preferences/com.apple.bluetooth.plist"
+        if FileManager.default.fileExists(atPath: pref) {
+            return .bluetoothPrefs
+        }
+        return .unknown
+    }
+
+    /// One extension per container: resolve ownership and keep the
+    /// Bluetooth-related ones. Sequential (each consume is an XPC round trip)
+    /// with progress lines so long roots stay observable.
     func identifyBluetooth(in containers: [String]) async -> [(id: String, path: String)] {
         var hits: [(id: String, path: String)] = []
+        var unknown = 0
+        var inaccessible = 0
         let total = containers.count
         for (index, path) in containers.enumerated() {
-            if let ident = containerIdentifier(path) {
+            switch classify(path) {
+            case .identifier(let ident):
                 if BluetoothPathFilter.isBluetoothRelated(ident) {
                     append("  ! \(ident) → \(path)")
                     hits.append((ident, path))
                 }
+            case .bluetoothPrefs:
+                append("  ! bluetooth prefs found → \(path)")
+                hits.append(("(bluetooth prefs)", path))
+            case .unknown:
+                unknown += 1
+            case .inaccessible:
+                inaccessible += 1
             }
             if (index + 1) % 50 == 0 {
                 append("identifying \(index + 1)/\(total)…")
                 await Task.yield()
             }
         }
+        append("classified \(total): \(hits.count) bluetooth, \(unknown) unidentified, \(inaccessible) inaccessible")
         return hits
     }
 
