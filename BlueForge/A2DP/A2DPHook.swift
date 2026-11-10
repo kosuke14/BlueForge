@@ -57,8 +57,6 @@ enum A2DPHookError: LocalizedError {
         }
     }
 }
-    }
-}
 
 /// Runs the feasible hooks; makes the infeasible one fail loudly with the reason.
 @MainActor
