@@ -3,6 +3,26 @@
 A prototype iOS app that encodes audio with a selectable Bluetooth audio codec
 and streams the encoded frames over BLE to a paired receiver (custom firmware).
 
+## Quick start (5 steps, in-app guide)
+
+Open the app once → the **guide** shows up automatically (or "高音質コーデック配信ガイド"
+on top of the main screen). It walks the original goal — send codec-encoded
+audio from an iPhone — using live status:
+
+1. **Role**: Sender on the streaming iPhone, Receiver on the playing device
+   (another iPhone with BlueForge, or BLE firmware receiver).
+2. **Codec**: pick LDAC/SBC/AAC/LC3. Start with SBC or AAC 256 kbps; LDAC
+   990 kbps can exceed BLE throughput.
+3. **Format**: set the same Hz / channels / kbps on both sides (no automatic
+   negotiation).
+4. **BLE**: sender → Scan, tap the device; receiver → Start Receiver
+   (advertises as `BlueForge RX`).
+5. **Stream**: sender taps Start Capture; received frames play through
+   AVAudioEngine.
+
+Everything advanced (sandbox probes, CodecForge, MobileGestalt experiments)
+lives under **上級** links and is not needed for the above.
+
 ## Honest scope / limitations (read first)
 
 1. **Jailed iPhone cannot change classic A2DP codec negotiation.** iOS decides

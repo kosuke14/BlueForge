@@ -47,7 +47,7 @@ struct ForgeView: View {
                 }
             }
 
-            Section("MobileGestalt (SystemGroup, iOS 27)") {
+            DisclosureGroup("Optional: MobileGestalt route (not needed for the main goal)") {
                 Button("Open MobileGestalt.plist") {
                     probe.appGroupOverride =
                         appGroup == "group.com.blueforge.app" ? nil : appGroup
@@ -56,7 +56,7 @@ struct ForgeView: View {
                                       dir: (GestaltKeys.devicePath as NSString).deletingLastPathComponent)
                 }
                 .disabled(probe.running)
-                Text("Targets the same cache GestaltX edits (CacheExtra keys). On-device access needs iOS 27.x; iOS 26.x returns no access for SystemGroup. The commit is in-place with readback verification and automatic recovery, exactly like GestaltX.")
+                Text("Same target GestaltX edits (CacheExtra). Only for research — the BLE codec streaming goal never touches this. Requires iOS 27.x SystemGroup access; commit is in-place with readback verification and automatic recovery (GestaltX style).")
                     .font(.caption2).foregroundColor(.secondary)
             }
 

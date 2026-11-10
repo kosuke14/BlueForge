@@ -23,6 +23,8 @@ struct ContentView: View {
     @State private var bitrateKbps: Int = 320
     @State private var sampleRate: Int = 48000
     @State private var channels: Int = 2
+    @AppStorage("bf.hasSeenGuide") private var hasSeenGuide = false
+    @State private var showGuideSheet = false
 
     init() {
         let cm = CodecManager()
@@ -36,6 +38,26 @@ struct ContentView: View {
     var body: some View {
         NavigationView {
             Form {
+                Section("Start here") {
+                    NavigationLink {
+                        guide
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "graduationcap.fill")
+                                .font(.title3)
+                                .frame(width: 36, height: 36)
+                                .background(Circle().fill(Color.accentColor.opacity(0.15)))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("高音質コーデック配信ガイド")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("目的だけを 5 ステップで設定 (初回起動時に自動表示)")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
                 Section("Mode") {
                     Picker("Role", selection: $role) {
                         ForEach(AudioRole.allCases) { r in
@@ -101,11 +123,11 @@ struct ContentView: View {
                     .onChange(of: bitrateKbps) { _ in applyFormat() }
                 }
 
-                Section("A2DP system access") {
-                    NavigationLink("System probe / hooks (sandbox)") {
+                Section {
+                    NavigationLink("上級: システム探索/Forge (sandbox 調査)") {
                         SystemProbeView()
                     }
-                    Text("Uses the worse_query containermanagerd technique to enumerate and read Bluetooth stack state. Jailed: read-only, see docs/SANDBOX_A2DP.md.")
+                    Text("主目的には不要です。worse_query 技法による Bluetooth 状態の列挙/読取や、実測された書き込み実験 (任意) を行えます。詳しくは docs/SANDBOX_A2DP.md・docs/CODECFORGE.md。")
                         .font(.caption2).foregroundColor(.secondary)
                 }
 
@@ -160,11 +182,23 @@ struct ContentView: View {
             }
             .navigationTitle("BlueForge")
         }
-        .onAppear { applyFormat() }
+        .onAppear {
+            applyFormat()
+            if !hasSeenGuide { showGuideSheet = true }
+        }
+        .sheet(isPresented: $showGuideSheet, onDismiss: { hasSeenGuide = true }) {
+            NavigationView { guide }
+        }
         .onChange(of: role) { _ in
             if pipeline.isRunning { pipeline.stop() }
             if receiver.isRunning { receiver.stop() }
         }
+    }
+
+    private var guide: some View {
+        GuideView(role: $role, bitrateKbps: $bitrateKbps, sampleRate: $sampleRate,
+                  channels: $channels,
+                  codecManager: codecManager, ble: ble, pipeline: pipeline, receiver: receiver)
     }
 
     private func applyFormat() {
