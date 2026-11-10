@@ -111,7 +111,7 @@ final class A2DPProbe: ObservableObject {
 
     /// worse_query's flag quirk: App Group targets on iOS 26.x need different
     /// flags than everything else.
-    private func consumeExtension(_ target: String) -> Int64 {
+    func consumeFor(_ target: String) -> Int64 {
         let major = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
         let altFlags = major == 26 && target.hasPrefix(A2DPProbeRoot.appGroup.rawValue)
         let handle = SandboxExtensionConsume(target, group, altFlags, false)
@@ -153,8 +153,8 @@ final class A2DPProbe: ObservableObject {
 
     /// Try to read a file/dir after consuming an extension; releases the handle
     /// immediately afterwards.
-    private func readPath(_ target: String) -> A2DPProbeFinding {
-        let handle = consumeExtension(target)
+    func read(_ target: String) -> A2DPProbeFinding {
+        let handle = consumeFor(target)
         guard handle > 0 else {
             append("  - can't access: \(target)")
             return A2DPProbeFinding(path: target, readable: false, summaryLines: [])
@@ -206,15 +206,15 @@ final class A2DPProbe: ObservableObject {
                 let related = found.filter(BluetoothPathFilter.isBluetoothRelated)
                 let candidates = Array(related.prefix(24))
                 for path in candidates {
-                    let f = self.readPath(path)
+                    let f = self.read(path)
                     if f.readable || !f.summaryLines.isEmpty {
                         self.findings.append(f)
                     }
-                    // Peek inside known preference locations (readPath
+                    // Peek inside known preference locations (read
                     // tolerates nonexistent targets).
                     for sub in BluetoothPathFilter.preferencesSubpaths {
                         let subPath = path + "/" + sub
-                        let sf = self.readPath(subPath)
+                        let sf = self.read(subPath)
                         if sf.readable {
                             self.findings.append(sf)
                         }
@@ -231,6 +231,25 @@ final class A2DPProbe: ObservableObject {
         var text = "BlueForge A2DP probe — \(Date())\n\n"
         text += log
         return text
+    }
+
+    /// List a directory under an extension (full names, no decoration).
+    func listDir(_ target: String) -> [String] {
+        let handle = consumeFor(target)
+        guard handle > 0 else {
+            append("  - can't access: \(target)")
+            return []
+        }
+        defer { SandboxExtensionRelease(handle) }
+        var isDir: ObjCBool = false
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: target, isDirectory: &isDir), isDir.boolValue else {
+            append("  - not a directory: \(target)")
+            return []
+        }
+        let entries = (try? fm.contentsOfDirectory(atPath: target)) ?? []
+        append("  + list \(target) — \(entries.count) entries")
+        return entries.sorted()
     }
 }
 

@@ -51,6 +51,9 @@ struct SystemProbeView: View {
             }
 
             Section("Hooks") {
+                NavigationLink("Open CodecForge (attempt write)") {
+                    ForgeView()
+                }
                 ForEach(A2DPHookStrategy.allCases) { strategy in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {

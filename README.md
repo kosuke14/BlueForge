@@ -78,6 +78,11 @@ Source-complete prototype (validated C bridges on Linux; iOS compile via CI):
   device** — it reveals bluetoothd state/codec signals, it cannot re-negotiate
   the A2DP codec; see `docs/SANDBOX_A2DP.md` and the in-app
   "A2DP system access" screen.
+- CodecForge (experimental): the escape is treated as a *possible writer* —
+  per-container writability is measured with harmless marker files, and only
+  proven-writable targets get a transactional plist editor (atomic rename-in,
+  `.bf.bak` backup, auto-restore on failure, per-attempt history in
+  `forge_history.json`). See `docs/CODECFORGE.md`.
 
 Remaining (requires Xcode/device/licensing):
 - Compile & sign on a physical device.
