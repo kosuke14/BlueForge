@@ -21,6 +21,10 @@ final class BLEAudioService: NSObject, ObservableObject {
     @Published private(set) var state: CBManagerState = .unknown
     @Published private(set) var connected: Bool = false
     @Published private(set) var discoveredPeripherals: [CBPeripheral] = []
+    @Published private(set) var mtu: Int = 20
+
+    /// Optional callback invoked on the BLE queue when a frame is received.
+    var onReceivedFrame: ((Data) -> Void)?
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
@@ -28,6 +32,7 @@ final class BLEAudioService: NSObject, ObservableObject {
     private let queue = DispatchQueue(label: "blueforge.ble")
     private let log = Logger(subsystem: "com.blueforge", category: "ble")
     private var reconnectAttempts = 0
+    private let maxReconnectAttempts = 5
 
     override init() {
         super.init()
@@ -77,6 +82,7 @@ extension BLEAudioService: CBCentralManagerDelegate {
     }
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         self.peripheral = peripheral
+        self.reconnectAttempts = 0
         peripheral.delegate = self
         peripheral.discoverServices([Self.serviceUUID])
         DispatchQueue.main.async { self.connected = true }
@@ -87,9 +93,10 @@ extension BLEAudioService: CBCentralManagerDelegate {
         let target = peripheral
         self.peripheral = nil
         // Best-effort reconnect with backoff.
-        if reconnectAttempts < 3 {
+        if reconnectAttempts < maxReconnectAttempts {
             reconnectAttempts += 1
-            queue.asyncAfter(deadline: .now() + .seconds(reconnectAttempts)) { [weak self] in
+            let delay = min(reconnectAttempts, 5)
+            queue.asyncAfter(deadline: .now() + .seconds(delay)) { [weak self] in
                 guard let self = self else { return }
                 self.central.connect(target, options: nil)
             }
@@ -107,7 +114,26 @@ extension BLEAudioService: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         guard let chars = service.characteristics else { return }
         for c in chars {
-            if c.uuid == Self.audioCharUUID { audioChar = c }
+            if c.uuid == Self.audioCharUUID {
+                audioChar = c
+                // Request notifications for incoming audio frames.
+                peripheral.setNotifyValue(true, for: c)
+            }
+        }
+        // Update MTU (iOS negotiates automatically; expose for chunking).
+        let maxWrite = peripheral.maximumWriteValueLength(for: .withoutResponse)
+        DispatchQueue.main.async { self.mtu = maxWrite }
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard error == nil, characteristic.uuid == Self.audioCharUUID,
+              let data = characteristic.value, !data.isEmpty else { return }
+        onReceivedFrame?(data)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            log.warning("notify state error: \(error.localizedDescription)")
         }
     }
 }

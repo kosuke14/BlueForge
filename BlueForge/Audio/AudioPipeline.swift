@@ -23,6 +23,19 @@ final class AudioPipeline: ObservableObject {
     init(codecManager: CodecManager, ble: BLEAudioService) {
         self.codecManager = codecManager
         self.ble = ble
+        ble.onReceivedFrame = { [weak self] data in
+            self?.handleReceivedFrame(data)
+        }
+    }
+
+    private func handleReceivedFrame(_ data: Data) {
+        guard let codec = codecManager.current else { return }
+        do {
+            let pcm = try codec.decode(frame: data)
+            log.info("received frame decoded: \(pcm.count) bytes")
+        } catch {
+            log.error("decode received frame failed: \(error.localizedDescription)")
+        }
     }
 
     func startCapture() throws {

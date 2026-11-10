@@ -9,14 +9,27 @@ targets:
     platform: iOS
     sources:
       - BlueForge
-      - AOSPBridge
+      - path: AOSPBridge/SBC
+      - path: AOSPBridge/SBCBridge.h
+      - path: AOSPBridge/SBCBridge.c
+      - path: AOSPBridge/LDAC/ldacBT.c
+      - path: AOSPBridge/LDAC/ldaclib.c
+      - path: AOSPBridge/LDAC
+        excludes:
+          - "*.c"
+      - path: AOSPBridge/LDACBridge.h
+      - path: AOSPBridge/LDACBridge.c
+      - path: AOSPBridge/LC3
+      - path: AOSPBridge/LC3Bridge.h
+      - path: AOSPBridge/LC3Bridge.c
+      - path: AOSPBridge/LDACDEC
     info:
       path: BlueForge/Resources/Info.plist
     settings:
       SWIFT_VERSION: "5.9"
       PRODUCT_BUNDLE_IDENTIFIER: com.blueforge.app
       SWIFT_OBJC_BRIDGING_HEADER: BlueForge/Bridging-Header.h
-      HEADER_SEARCH_PATHS: "$(SRCROOT)/AOSPBridge"
+      HEADER_SEARCH_PATHS: "$(SRCROOT)/AOSPBridge $(SRCROOT)/AOSPBridge/SBC $(SRCROOT)/AOSPBridge/LDAC $(SRCROOT)/AOSPBridge/LC3 $(SRCROOT)/AOSPBridge/LDACDEC"
   BlueForgeTests:
     type: bundle.unit-test
     platform: iOS

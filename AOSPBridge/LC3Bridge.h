@@ -1,22 +1,30 @@
-//
-//  LC3Bridge.h
-//
+#ifndef LC3Bridge_h
+#define LC3Bridge_h
 
-#import <Foundation/Foundation.h>
+#include <stddef.h>
+#include <stdint.h>
 
-NS_ASSUME_NONNULL_BEGIN
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-@interface LC3Bridge : NSObject
+typedef struct LC3Context LC3Context;
 
-- (nullable instancetype)initWithSampleRate:(int)sampleRate
-                                    channels:(int)channels
-                              frameDurationUs:(int)frameDurationUs
-                                     bitrate:(int)bitrate;
+LC3Context *lc3_create(int sampleRate, int channels, int bitrate, int frameDurationUs);
+void lc3_destroy(LC3Context *ctx);
 
-- (nullable NSData *)encodePCM:(NSData *)pcm;
-- (nullable NSData *)decodeFrame:(NSData *)frame pcmBytes:(size_t *)outBytes;
-- (void)reset;
+/* Encode one frame. Returns total encoded byte count or -1. */
+int lc3_encode_frame(LC3Context *ctx, const int16_t *pcm, int pcmBytes,
+                     unsigned char *out, int outCapacity);
 
-@end
+/* Decode one frame. Returns PCM byte count or -1. */
+int lc3_decode_frame(LC3Context *ctx, const unsigned char *in, int inLen,
+                     int16_t *out, int outCapacity);
 
-NS_ASSUME_NONNULL_END
+int lc3_frame_samples_count(LC3Context *ctx);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* LC3Bridge_h */

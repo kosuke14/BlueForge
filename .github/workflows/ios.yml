@@ -1,0 +1,73 @@
+name: iOS Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: "Build configuration"
+        required: true
+        default: "Release"
+        type: choice
+        options:
+          - Debug
+          - Release
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build & Test
+        run: |
+          xcodebuild \
+            -project BlueForge.xcodeproj \
+            -scheme BlueForge \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -configuration ${{ github.event.inputs.configuration }} \
+            clean build test | xcpretty
+
+  build-ipa:
+    runs-on: macos-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build unsigned IPA
+        run: |
+          set -e
+          CFG="${{ github.event.inputs.configuration }}"
+          xcodebuild \
+            -project BlueForge.xcodeproj \
+            -scheme BlueForge \
+            -configuration "$CFG" \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "BlueForge.app" -path "*Build/Products*" | head -1)
+          echo "APP_PATH=$APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r BlueForge.ipa Payload
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlueForge-ipa
+          path: BlueForge.ipa
+          retention-days: 14

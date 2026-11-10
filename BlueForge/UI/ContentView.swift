@@ -8,8 +8,8 @@ import CoreBluetooth
 import os
 
 struct ContentView: View {
-    @StateObject private var codecManager = CodecManager()
-    @StateObject private var ble = BLEAudioService()
+    @StateObject private var codecManager: CodecManager
+    @StateObject private var ble: BLEAudioService
     @StateObject private var pipeline: AudioPipeline
 
     @State private var bitrateKbps: Int = 320

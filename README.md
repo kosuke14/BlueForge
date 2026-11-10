@@ -46,17 +46,19 @@ Then update `LDACCodec` / `LC3Codec` to call the bridge instead of throwing.
 
 ## Status
 
-Source-complete prototype (no Xcode available in this environment to compile):
-- Codec abstraction + manager, AAC (native), SBC (encode+decode, simplified filterbank),
-  LDAC/LC3 façades + AOSP bridge scaffolding, aptX family stubs.
-- BLE central service with reconnect/backoff, MTU chunking.
+Source-complete prototype (validated C bridges on Linux; iOS compile via CI):
+- Codec abstraction + manager.
+- AAC (native encode+decode via AVAudioConverter).
+- SBC (BlueZ libsbc via AOSPBridge).
+- LDAC (AOSP libldac encoder + MIT decoder via AOSPBridge).
+- LC3 / LE Audio (AOSP liblc3 via AOSPBridge).
+- aptX family: stubs only (Qualcomm proprietary; license required).
+- BLE central service with reconnect/backoff, MTU chunking, frame receive callback.
 - AVAudioEngine capture pipeline, SwiftUI UI with codec/format controls.
 - XCTest suite, XcodeGen project, AOSP integration guide.
 
 Remaining (requires Xcode/device/licensing):
 - Compile & sign on a physical device.
-- Wire AOSP libldac/liblc3 via AOSPBridge.
-- Replace simplified SBC filterbank with A2DP reference.
 - Obtain Qualcomm license for aptX family.
 
 ## Building

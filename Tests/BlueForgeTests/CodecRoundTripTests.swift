@@ -1,28 +1,24 @@
-//
-//  CodecRoundTripTests.swift
-//  BlueForgeTests
-//
-
 import XCTest
 @testable import BlueForge
 
 final class CodecRoundTripTests: XCTestCase {
 
-    func testSBCConfigure() throws {
+    func testSBCConfigureAndRoundTrip() throws {
         let c = SBCEncoder()
         try c.configure(format: PCMFormat(sampleRate: 48000, channels: 2, bitsPerSample: 16), bitrate: 320000)
         c.reset()
-        let pcm = Data(repeating: 0, count: 16 * 8 * 2 * 2) // blocks*subbands*channels*2
+        let cs = sbc_codesize(c.ctx!)
+        let pcm = Data(repeating: 0, count: Int(cs))
         let frame = try c.encode(pcm: pcm)
         XCTAssertFalse(frame.isEmpty)
-        XCTAssertGreaterThan(frame.count, 4)
+        let dec = try c.decode(frame: frame)
+        XCTAssertEqual(dec.count, Int(cs))
     }
 
     func testAACConfigure() throws {
         let c = AACEncoder()
         try c.configure(format: PCMFormat(sampleRate: 44100, channels: 2, bitsPerSample: 16), bitrate: 256000)
         c.reset()
-        // AAC encoder needs full frames; smoke test config only
         XCTAssertNotNil(c)
     }
 
@@ -30,20 +26,35 @@ final class CodecRoundTripTests: XCTestCase {
         let m = CodecManager()
         for id in CodecID.allCases {
             m.selected = id
-            // AOSP-available codecs should configure without error.
             if id.aospAvailable {
                 XCTAssertNil(m.lastError, "\(id) configured with error: \(m.lastError ?? "")")
             } else {
-                // Proprietary codecs configure (UI can select) but encode is blocked.
                 XCTAssertNotNil(m.current)
             }
         }
     }
 
-    func testLDACThrowsNotImplemented() {
+    func testLDACRoundTrip() throws {
         let c = LDACCodec()
-        try? c.configure(format: PCMFormat(sampleRate: 48000, channels: 2, bitsPerSample: 16), bitrate: 990000)
-        XCTAssertThrowsError(try c.encode(pcm: Data(count: 1024)))
+        try c.configure(format: PCMFormat(sampleRate: 48000, channels: 2, bitsPerSample: 16), bitrate: 990000)
+        c.reset()
+        let pcm = Data(repeating: 0, count: 2 * 128 * 2 * 2)
+        let frame = try c.encode(pcm: pcm)
+        XCTAssertFalse(frame.isEmpty)
+        let dec = try c.decode(frame: frame)
+        XCTAssertGreaterThan(dec.count, 0)
+    }
+
+    func testLC3RoundTrip() throws {
+        let c = LC3Codec()
+        try c.configure(format: PCMFormat(sampleRate: 48000, channels: 2, bitsPerSample: 16), bitrate: 128000)
+        c.reset()
+        let fs = Int(lc3_frame_samples_count(c.ctx!))
+        let pcm = Data(repeating: 0, count: fs * 2 * 2)
+        let frame = try c.encode(pcm: pcm)
+        XCTAssertFalse(frame.isEmpty)
+        let dec = try c.decode(frame: frame)
+        XCTAssertGreaterThan(dec.count, 0)
     }
 
     func testAptXThrowsLicensing() {

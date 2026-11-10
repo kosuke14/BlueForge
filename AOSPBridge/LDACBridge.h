@@ -1,31 +1,28 @@
-//
-//  LDACBridge.h
-//  BlueForge
-//
-//  Objective-C++ façade over AOSP external/libldac.
-//  Build notes:
-//    1. Add AOSP source tree (external/libldac) to the target.
-//    2. Compile this file as Objective-C++ (.mm).
-//    3. Link libldacBT_enc / libldacBT_dec.
-//
+#ifndef LDACBridge_h
+#define LDACBridge_h
 
-#import <Foundation/Foundation.h>
+#include <stddef.h>
+#include <stdint.h>
 
-NS_ASSUME_NONNULL_BEGIN
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-@interface LDACBridge : NSObject
+typedef struct LDACContext LDACContext;
 
-/// Create an encoder. Returns nil on failure.
-- (nullable instancetype)initWithSampleRate:(int)sampleRate
-                                    channels:(int)channels
-                                     bitrate:(int)bitrate;
+LDACContext *ldac_create(int sampleRate, int channels, int bitrate);
+void ldac_destroy(LDACContext *ctx);
 
-/// Encode a chunk of interleaved Int16 PCM. Returns encoded frame or nil.
-- (nullable NSData *)encodePCM:(NSData *)pcm;
+/* Encode one frame (128 samples/channel). Returns encoded byte count or -1. */
+int ldac_encode(LDACContext *ctx, const int16_t *pcm, int pcmBytes,
+                unsigned char *out, int outCapacity);
 
-/// Reset encoder state.
-- (void)reset;
+/* Decode one frame. Returns PCM byte count or -1. */
+int ldac_decode(LDACContext *ctx, const unsigned char *in, int inLen,
+                int16_t *out, int outCapacity);
 
-@end
+#ifdef __cplusplus
+}
+#endif
 
-NS_ASSUME_NONNULL_END
+#endif /* LDACBridge_h */
