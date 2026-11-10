@@ -21,6 +21,8 @@ struct ForgeView: View {
                     .disableAutocorrection(true)
                     .textInputAutocapitalization(.never)
                     .font(.system(.caption, design: .monospaced))
+                Text("LiveContainer では入力不要です。ホスト IPA に App Group が付いていれば自動検出し、順に試行します (docs/LIVECONTAINER.md)。指定するのは署名側: ホストの entitlements に com.apple.security.application-groups を追加してください。")
+                    .font(.caption2).foregroundColor(.secondary)
             }
 
             Section("1. Scan (write access is measured)") {

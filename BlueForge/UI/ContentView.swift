@@ -213,14 +213,11 @@ struct ContentView: View {
                       allowedContentTypes: [.audio],
                       allowsMultipleSelection: false) { result in
             if case .success(let urls) = result, let url = urls.first {
-                if mediaScopeActive {
-                    selectedMediaURL?.stopAccessingSecurityScopedResource()
-                }
-                mediaScopeActive = url.startAccessingSecurityScopedResource()
-                selectedMediaURL = url
-                do { try pipeline.startPlayback(url: url) }
-                catch { pipeline.lastError = error.localizedDescription }
+                ingest(url)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .blueforgeIngestMedia)) { note in
+            if let url = note.object as? URL { ingest(url) }
         }
         .onChange(of: role) { _ in
             if pipeline.isRunning { pipeline.stop() }
@@ -232,6 +229,18 @@ struct ContentView: View {
         GuideView(role: $role, bitrateKbps: $bitrateKbps, sampleRate: $sampleRate,
                   channels: $channels,
                   codecManager: codecManager, ble: ble, pipeline: pipeline, receiver: receiver)
+    }
+
+    /// Take ownership of a media URL (Files picker or "Open in BlueForge")
+    /// and start streaming it through the codec pipeline.
+    private func ingest(_ url: URL) {
+        if mediaScopeActive {
+            selectedMediaURL?.stopAccessingSecurityScopedResource()
+        }
+        mediaScopeActive = url.startAccessingSecurityScopedResource()
+        selectedMediaURL = url
+        do { try pipeline.startPlayback(url: url) }
+        catch { pipeline.lastError = error.localizedDescription }
     }
 
     private func applyFormat() {

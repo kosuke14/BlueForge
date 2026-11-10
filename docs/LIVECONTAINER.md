@@ -6,6 +6,38 @@ beyond the system ones it dlopens at call time), so it runs inside
 side-loaded app. The parts that matter for the escape are handled dynamically
 rather than by bundle identity:
 
+## App Group: how to provide it (the common question)
+
+You do **not** configure the App Group inside BlueForge. The escape is granted
+by `containermanagerd` only when the *running process* is effectively signed
+with the group — and under LiveContainer the running process is the **LC host
+app**. Guest-app entitlements are emulated by LC for container URLs, but they
+do not exist for kernel sandbox extension issuance. Therefore:
+
+1. **Sign the LiveContainer host IPA with an App Group.** Add to the host's
+   entitlements at signing time:
+   ```xml
+   <key>com.apple.security.application-groups</key>
+   <array>
+       <string>group.com.blueforge.app</string>
+   </array>
+   ```
+   - ESign / paid certs: entitlements editor → add the key above (any
+     `group.*` id works; paid profile required for Apple to accept groups).
+   - TrollStore: free entitlement injection — just add the same key.
+   - SideStore/AltStore with a **free** Apple ID: App Groups are not
+     available at all, so the escape cannot work there (use a paid cert or
+     TrollStore).
+2. **Guest side needs nothing.** BlueForge discovers every group the process
+   is effectively signed with at runtime (`SecTaskCopyValueForEntitlement`,
+   falling back to Mach-O code-signature parsing — the LCSign/GestaltX
+   technique) and tries them all per escape call. The in-app
+   "App Group" text field is only an optional first preference; leave the
+   default (`group.com.blueforge.app`) and the fallback kicks in.
+3. **Verify**: run the probe/forge scan. A missing group logs
+   `no accessible container for <group>` per candidate — if *every* candidate
+   logs that, the host is signed without any App Group.
+
 1. **App Group discovery at runtime** (`BlueForge/Escape/EntitlementsReader.m`,
    derived from huamidev/GestaltX, itself derived from LCSign):
    `SecTaskCopyValueForEntitlement` is queried first; if that yields nothing,

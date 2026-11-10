@@ -194,9 +194,12 @@ struct GuideView: View {
 
     private var goalCard: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("目的: 高音質コーデックで iPhone から音を送る", systemImage: "target").font(.headline)
-            Text("LDAC / SBC / AAC / LC3 をこのアプリ自身がエンコードし、BLE で受信側へストリーミングします。通常のヘッドフォン向きの A2DP ネゴシエーションは iOS システム管理のため対象外です。")
+            Label("目的: A2DP コーデックの拡張(音質・遅延の改善)", systemImage: "target").font(.headline)
+            Text("音源は iPhone 内のオーディオ(LDAC は 96kHz まで対応)。本アプリで再生/エンコードし BLE で受信側へ送ることで、サンプリングレート向上などのコーデック差し替え効果を得ます。エスケープ対応 iOS では Bluetooth 状態の実測・編集実験(上級)も可能です。")
                 .font(.caption)
+                .foregroundColor(.secondary)
+            Text("制限: コントロールセンターの AirPlay/出力先で切り替わる“他アプリのシステム音声”は脱獄なしでは取得できません(iOS にサードパイヤ向け process tap が無いため)。他アプリの音は“共有 → BlueForge で開く”で渡してください。")
+                .font(.caption2)
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

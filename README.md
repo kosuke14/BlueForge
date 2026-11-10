@@ -26,6 +26,25 @@ audio from an iPhone — using live status:
 Everything advanced (sandbox probes, CodecForge experiments) lives under
 **上級** links and is not needed for the above.
 
+## Clarified goal (what this app actually does)
+
+On iOS versions where the worse_query sandbox escape works (26.0–26.7.2 /
+27.2), BlueForge targets **A2DP codec extension for quality/latency**:
+
+- **Source**: audio on the iPhone — played in-app (media files) or handed over
+  from any app via the share sheet / "Open in BlueForge" (`public.audio`
+  document type). LDAC supports up to 96 kHz sources.
+- **Effect**: replacing the transport codec (SBC → LDAC etc.) raises the
+  sampling rate / bitrate and can cut latency versus the default path.
+- **Known hard limits (jailed iOS)**:
+  - The *system-wide* audio routed through the Control Center AirPlay/output
+    picker (other apps' sound) cannot be captured — iOS exposes no
+    third-party process-tap API (ReplayKit only returns the originating
+    app's audio). Hand such audio over via "Open in BlueForge" instead.
+  - Changing the A2DP SEP negotiation of *commercial* headphones remains a
+    jailbreak-only operation; CodecForge experiments on the escape-enabled
+    versions are the research path toward it.
+
 ## Honest scope / limitations (read first)
 
 1. **Jailed iPhone cannot change classic A2DP codec negotiation.** iOS decides
