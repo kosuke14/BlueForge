@@ -7,5 +7,6 @@
 
 #import "SandboxEscape.h"
 #import "PathScanner.h"
+#import "EntitlementsReader.h"
 
 #endif

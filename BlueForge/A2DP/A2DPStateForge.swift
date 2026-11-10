@@ -16,6 +16,12 @@
 import Foundation
 import Combine
 
+/// MobileGestalt cache (SystemGroup escape target on iOS 27.x, per GestaltX).
+enum GestaltKeys {
+    static let devicePath = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
+    static let cacheExtra = "CacheExtra"
+}
+
 struct ForgeHistoryRecord: Codable, Identifiable {
     let date: Date
     let target: String
@@ -59,6 +65,8 @@ final class A2DPStateForge: ObservableObject {
     @Published var dirPath: String?
     @Published var filePath: String?
     @Published var filePathWritable = false
+    /// Bytes captured at load for GestaltX-style TOCTOU checks.
+    @Published var expectedBytes: Data?
     @Published var allowAnyKey = false
     @Published var history: [ForgeHistoryRecord] = []
 
@@ -150,6 +158,7 @@ final class A2DPStateForge: ObservableObject {
         guard let probe else { append("probe not attached"); return }
         filePath = path
         keyValues = []
+        expectedBytes = nil
 
         let (writable, note) = probeWritable(dir)
         filePathWritable = writable
@@ -166,6 +175,9 @@ final class A2DPStateForge: ObservableObject {
             append("unreadable: \(path)")
             return
         }
+        if path == GestaltKeys.devicePath {
+            expectedBytes = data
+        }
         do {
             let (root, _) = try PLISTForge.parse(data)
             keyValues = PLISTForge.keyValues(root: root, codecOnly: !allowAnyKey)
@@ -180,6 +192,143 @@ final class A2DPStateForge: ObservableObject {
     /// Transactional write-back: backup `path` as `path.bf.bak`, then rename a
     /// freshly serialised tmp file into place; restore on failure.
     func forge(restoreOriginal: Bool = false) {
+        guard let probe, let path = filePath else { return }
+        if path == GestaltKeys.devicePath {
+            gestaltForge(restoreOriginal: restoreOriginal)
+            return
+        }
+        genericForge(restoreOriginal: restoreOriginal)
+    }
+
+    /// GestaltX-style commit for the MobileGestalt cache: the extension may not
+    /// allow directory creation, so the write keeps the file's existing inode
+    /// (in-place truncate+write), is readback-verified, and restores the
+    /// previous bytes on any failure.
+    private func gestaltForge(restoreOriginal: Bool) {
+        guard let probe, let path = filePath else { return }
+        let handle = probe.consumeFor(path)
+        guard handle > 0 else {
+            recordForge(path, [], false, "no extension")
+            return
+        }
+        defer { SandboxExtensionRelease(handle) }
+        do {
+            let current = try Data(contentsOf: URL(fileURLWithPath: path))
+            if restoreOriginal {
+                try gestaltRestore()
+                return
+            }
+            guard let expected = expectedBytes, current == expected else {
+                append("MobileGestalt changed since load — reload before applying")
+                return
+            }
+            let (root, format) = try PLISTForge.parse(current)
+            var mutableRoot: Any = root
+            let changed = PLISTForge.apply(&mutableRoot, edits: keyValues)
+            guard !changed.isEmpty else {
+                append("nothing changed — refusing no-op write")
+                return
+            }
+            let backupURL = try saveGestaltBackup(current)
+            append("backup verified at \(backupURL.path)")
+
+            let output = try PLISTForge.serialise(mutableRoot, format: format)
+            try writeInPlace(output, path: path)
+            let readback = try Data(contentsOf: URL(fileURLWithPath: path))
+            let readbackRoot = try PLISTForge.parse(readback).root
+
+            let mismatches = changed.filter { key in
+                guard let edit = keyValues.first(where: { $0.components == key }) else { return true }
+                guard let actual = PLISTForge.value(in: readbackRoot, at: edit.components) else { return true }
+                return !PLISTForge.leavesEqual(actual, PLISTForge.parseValue(edit.editedText))
+            }
+            guard mismatches.isEmpty else {
+                append("readback mismatch (\(mismatches.count) keys) — restoring previous bytes")
+                try writeInPlace(current, path: path)
+                let restored = try Data(contentsOf: URL(fileURLWithPath: path))
+                guard restored == current else {
+                    append("restore NOT verified — keep \(backupURL.path)")
+                    throw PLISTForgeError.serializationFailed
+                }
+                throw PLISTForgeError.serializationFailed
+            }
+            append("forged \(path) — \(changed.count) key\(changed.count == 1 ? "" : "s"): "
+                   + changed.map { $0.joined(separator: ".").lowercased() }.sorted().joined(separator: ", "))
+            append("write verified by readback. Gestalt caches are consulted at launch — restart the device (as GestaltX requires) to observe the effect.")
+            recordForge(path, changed.map { $0.joined(separator: ".").lowercased() }.sorted(),
+                        true, "forged + readback verified")
+        } catch {
+            append("gestalt forge failed: \(error.localizedDescription)")
+            recordForge(filePath ?? path, [], false, "failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func recordForge(_ target: String, _ keys: [String], _ writable: Bool, _ note: String) {
+        ForgeHistory.append(.init(date: Date(), target: target, changedKeys: keys,
+                                  writable: writable, note: note))
+        history = ForgeHistory.load()
+    }
+
+    private func writeInPlace(_ data: Data, path: String) throws {
+        guard let fileHandle = FileHandle(forWritingAtPath: path) else {
+            append("in-place write refused (no write handle)")
+            throw PLISTForgeError.serializationFailed
+        }
+        do {
+            fileHandle.truncate(atOffset: 0)
+            try fileHandle.write(contentsOf: data)
+            try fileHandle.close()
+        } catch {
+            try? fileHandle.close()
+            throw error
+        }
+    }
+
+    private func gestaltBackupDirectory() -> URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir = docs.appendingPathComponent("GestaltBackups", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private func saveGestaltBackup(_ data: Data) throws -> URL {
+        let dir = gestaltBackupDirectory()
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let url = dir.appendingPathComponent("MobileGestalt_\(stamp).plist")
+        try data.write(to: url, options: .atomic)
+        guard try Data(contentsOf: url) == data else {
+            throw PLISTForgeError.serializationFailed
+        }
+        return url
+    }
+
+    private func gestaltRestore() throws {
+        let dir = gestaltBackupDirectory()
+        let backups = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil))?.filter { $0.pathExtension == "plist" } ?? []
+        let dated = backups.compactMap { url -> (Date, URL)? in
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let date = attrs[.modificationDate] as? Date else { return nil }
+            return (date, url)
+        }
+        guard let newest = dated.max(by: { $0.0 < $1.0 }) else {
+            append("no Gestalt backup found in \(dir.path)")
+            return
+        }
+        let data = try Data(contentsOf: newest.1)
+        _ = try PLISTForge.parse(data)
+        try writeInPlace(data, path: GestaltKeys.devicePath)
+        let restored = try Data(contentsOf: URL(fileURLWithPath: GestaltKeys.devicePath))
+        guard restored == data else {
+            throw PLISTForgeError.serializationFailed
+        }
+        append("restored Gestalt backup \(newest.1.lastPathComponent)")
+        recordForge(GestaltKeys.devicePath, [], true, "gestalt backup restored")
+    }
+
+    /// Original rename-based path for A2DP state containers (marker-verified
+    /// writable directories).
+    private func genericForge(restoreOriginal: Bool) {
         guard let probe, let path = filePath else { return }
         let dir = (path as NSString).deletingLastPathComponent
 
@@ -231,12 +380,12 @@ final class A2DPStateForge: ObservableObject {
 
             try moveIntoPlace(newData, target: path, in: dir, fm: fm)
             append("forged \(path) — \(changed.count) key\(changed.count == 1 ? "" : "s"): "
-                   + changed.map { $0.joined(separator: ".") }.sorted().joined(separator: ", "))
+                   + changed.map { $0.joined(separator: ".").sorted().joined(separator: ", ") })
             append("toggle Bluetooth (Control Center off/on) so bluetoothd reloads its state before judging the result.")
 
             ForgeHistory.append(.init(date: Date(), target: path,
-                                      changedKeys: changed.map { $0.joined(separator: ".") }.sorted(),
-                                      writable: true, note: "forged (persistent backup + restored-copy)"))
+                                      changedKeys: changed.map { $0.joined(separator: ".").sorted() },
+                                      writable: true, note: "forged"))
             history = ForgeHistory.load()
         } catch {
             append("forge failed: \(error.localizedDescription)")
@@ -247,6 +396,7 @@ final class A2DPStateForge: ObservableObject {
             history = ForgeHistory.load()
         }
     }
+
 
     private func moveIntoPlace(_ data: Data, target: String, in dir: String, fm: FileManager) throws {
         let tmp = dir + "/.bf.tmp_" + String(UUID().uuidString.prefix(8))

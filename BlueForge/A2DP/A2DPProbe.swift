@@ -111,21 +111,59 @@ final class A2DPProbe: ObservableObject {
 
     /// worse_query's flag quirk: App Group targets on iOS 26.x need different
     /// flags than everything else.
-    func consumeFor(_ target: String) -> Int64 {
+    private func altFlags(_ target: String) -> Bool {
         let major = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-        let altFlags = major == 26 && target.hasPrefix(A2DPProbeRoot.appGroup.rawValue)
-        let handle = SandboxExtensionConsume(target, group, altFlags, false)
-        switch handle {
-        case -1: append("failed to access app group (\(group))")
-        case -2: append("failed to resolve containermanagerd symbols (unsupported OS?)")
-        case -3: append("failed to create query")
-        case -4: append("failed to create symlink")
-        case -5: append("query rejected")
-        case -6: append("kernel refused extension issue")
-        case -255: append("target doesn't exist: \(target)")
-        default: break
+        return major == 26 && target.hasPrefix(A2DPProbeRoot.appGroup.rawValue)
+    }
+
+    /// The configured group first, then every group this process is actually
+    /// signed with (GestaltX technique — re-signing hosts such as LiveContainer
+    /// inject a different group than the development one).
+    private func candidateGroups() -> [String] {
+        var list = [group]
+        if appGroupOverride == nil {
+            let signed = (EntitlementsReader.usableAppGroups() as? [String]) ?? []
+            for candidate in signed where !list.contains(candidate) {
+                list.append(candidate)
+            }
         }
-        return handle
+        return list
+    }
+
+    private func ensureCaches(_ groupID: String) {
+        guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) else { return }
+        let caches = root.appendingPathComponent("Library/Caches")
+        if (try? FileManager.default.createDirectory(at: caches, withIntermediateDirectories: true)) != nil {
+            append("created missing Library/Caches for \(groupID)")
+        }
+    }
+
+    /// Consume an extension trying every usable App Group (the -4 case is
+    /// fixed by creating Library/Caches, then retrying — same as GestaltX).
+    func consumeFor(_ target: String) -> Int64 {
+        let alt = altFlags(target)
+        var lastHandle: Int64 = -1
+        for candidate in candidateGroups() {
+            var handle = SandboxExtensionConsume(target, candidate, alt, false)
+            if handle == -4 {
+                ensureCaches(candidate)
+                handle = SandboxExtensionConsume(target, candidate, alt, false)
+            }
+            if handle > 0 { return handle }
+            lastHandle = handle
+            switch handle {
+            case -1: append("no accessible container for \(candidate)")
+            case -2: append("failed to resolve containermanagerd symbols (unsupported OS?)")
+            case -3: append("failed to create query")
+            case -5: append("query rejected")
+            case -6: append("kernel refused extension issue")
+            default: break
+            }
+        }
+        if lastHandle == -255 {
+            append("target doesn't exist / invisible: \(target)")
+        }
+        return lastHandle
     }
 
     /// Enumerate one root via pathleak and return every visible child path

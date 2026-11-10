@@ -83,6 +83,16 @@ Source-complete prototype (validated C bridges on Linux; iOS compile via CI):
   proven-writable targets get a transactional plist editor (atomic rename-in,
   `.bf.bak` backup, auto-restore on failure, per-attempt history in
   `forge_history.json`). See `docs/CODECFORGE.md`.
+- GestaltX-style MobileGestalt commit: in-place, readback-verified writes to
+  `com.apple.MobileGestalt.plist` (iOS 27.x SystemGroup) with automatic
+  recovery and verified backups — the write path proven possible by
+  https://github.com/huamidev/GestaltX. Same escape plumbing, cache target
+  `CacheExtra`.
+- LiveContainer-friendly: App Groups are discovered at runtime from the
+  process's effective entitlements (SecTask, then Mach-O signature parse —
+  LCSign/GestaltX technique), every signed group is tried per escape call,
+  and the `Library/Caches` hole is healed before retry. See
+  `docs/LIVECONTAINER.md`.
 
 Remaining (requires Xcode/device/licensing):
 - Compile & sign on a physical device.

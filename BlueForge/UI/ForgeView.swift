@@ -47,6 +47,19 @@ struct ForgeView: View {
                 }
             }
 
+            Section("MobileGestalt (SystemGroup, iOS 27)") {
+                Button("Open MobileGestalt.plist") {
+                    probe.appGroupOverride =
+                        appGroup == "group.com.blueforge.app" ? nil : appGroup
+                    forge.probe = probe
+                    forge.inspectFile(GestaltKeys.devicePath,
+                                      dir: (GestaltKeys.devicePath as NSString).deletingLastPathComponent)
+                }
+                .disabled(probe.running)
+                Text("Targets the same cache GestaltX edits (CacheExtra keys). On-device access needs iOS 27.x; iOS 26.x returns no access for SystemGroup. The commit is in-place with readback verification and automatic recovery, exactly like GestaltX.")
+                    .font(.caption2).foregroundColor(.secondary)
+            }
+
             if let dir = forge.dirPath {
                 Section("2. Entries in \(dir)") {
                     ForEach(forge.entries, id: \.self) { entry in
@@ -64,21 +77,29 @@ struct ForgeView: View {
             if let path = forge.filePath, forge.filePathWritable {
                 Section("3. Edit \(path)") {
                     Toggle("Show all keys (not only codec)", isOn: $forge.allowAnyKey)
-                        .onChange(of: forge.allowAnyKey) { _ in reload() }
+                        .onChange(of: forge.allowAnyKey) { _ in updateFilters() }
 
                     ForEach($forge.keyValues) { $kv in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(kv.display)
-                                .font(.system(.caption2, design: .monospaced))
-                                .textSelection(.enabled)
-                            TextField(kv.originalText, text: $kv.editedText)
-                                .font(.system(.caption, design: .monospaced))
+                            HStack {
+                                Text(kv.display)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .textSelection(.enabled)
+                                Spacer()
+                                if !kv.editable {
+                                    Text("data").font(.caption2).foregroundColor(.orange)
+                                }
+                            }
+                            if kv.editable {
+                                TextField(kv.originalText, text: $kv.editedText)
+                                    .font(.system(.caption, design: .monospaced))
+                            }
                         }
                     }
 
                     Button("Write back (backup auto)") { forge.forge() }
                     Button("Restore from backup") { forge.forge(restoreOriginal: true) }
-                    Text("Values are re-typed as bool/int/double when they parse as such, otherwise as string. A .bf.bak copy is kept on first write and direct writes replace the file atomically.")
+                    Text("Values are re-typed as bool/int/double when they parse as such, otherwise as string. Data/Date leaves stay read-only (shown as data). Writes are verified by an immediate readback; any failure restores the previous bytes.")
                         .font(.caption2).foregroundColor(.secondary)
                 }
             }
@@ -122,7 +143,7 @@ struct ForgeView: View {
         return text
     }
 
-    private func reload() {
+    private func updateFilters() {
         guard let path = forge.filePath, let dir = forge.dirPath else { return }
         forge.inspectFile(path, dir: dir)
     }

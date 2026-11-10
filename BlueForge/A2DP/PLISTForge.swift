@@ -25,16 +25,21 @@ struct ForgeKeyValue: Identifiable, Equatable {
     let components: [String]
     let originalText: String
     var editedText: String
+    /// false when the original leaf is a type we cannot round-trip (Data/Date).
+    let editable: Bool
 
-    init(id: UUID = UUID(), components: [String], originalText: String, editedText: String? = nil) {
+    init(id: UUID = UUID(), components: [String], originalText: String,
+         editedText: String? = nil, editable: Bool = true) {
         self.id = id
         self.components = components
         self.originalText = originalText
         self.editedText = editedText ?? originalText
+        self.editable = editable
     }
 
     var display: String { components.joined(separator: " → ") }
     var untouched: Bool { editedText == originalText }
+    var ignored: Bool { !editable || untouched }
 }
 
 enum PLISTForge {
@@ -82,9 +87,50 @@ enum PLISTForge {
     }
 
     static func describeLeaf(_ value: Any) -> String {
+        if value is Bool { return (value as! Bool) ? "true" : "false" }
         if let number = value as? NSNumber { return number.stringValue }
         if let str = value as? String { return str }
+        if let data = value as? Data { return "(\(data.count) bytes)" }
+        if let date = value as? Date { return date.description }
         return String(describing: value)
+    }
+
+    /// Whether a leaf's type survives text round-tripping.
+    static func isEditableLeaf(_ value: Any) -> Bool {
+        !(value is Data || value is Date)
+    }
+
+    /// Canonical form of user-text after parsing (for readback verification).
+    static func canonical(_ text: String) -> String {
+        describeLeaf(parseValue(text))
+    }
+
+    /// Resolve a leaf value by components (dict keys + "[n]" array indices).
+    static func value(in root: Any, at components: [String]) -> Any? {
+        var current = root
+        for component in components {
+            if component.hasPrefix("["), component.hasSuffix("]"),
+               let index = Int(component.dropFirst().dropLast()),
+               let array = current as? [Any], array.indices.contains(index) {
+                current = array[index]
+            } else if let dict = current as? [String: Any], let next = dict[component] {
+                current = next
+            } else {
+                return nil
+            }
+        }
+        return current
+    }
+
+    /// Compare two plist leaves semantically (numbers cross-type, bools, strings).
+    static func leavesEqual(_ a: Any, _ b: Any) -> Bool {
+        switch (a, b) {
+        case (let s1 as String, let s2 as String): return s1 == s2
+        case (let n1 as NSNumber, let n2 as NSNumber): return n1 == n2
+        case (let d1 as Data, let d2 as Data): return d1 == d2
+        case (let d1 as Date, let d2 as Date): return d1 == d2
+        default: return false
+        }
     }
 
     /// User-typed text back to a plist value (heuristic: bool/int/double then string).
@@ -117,7 +163,7 @@ enum PLISTForge {
     static func apply(_ root: inout Any, edits: [ForgeKeyValue]) -> Set<[String]> {
         var changed: Set<[String]> = []
         guard var dict = root as? [String: Any] else { return changed }
-        for edit in edits where !edit.untouched {
+        for edit in edits where !edit.ignored {
             let path = edit.components.filter { !$0.hasPrefix("[") }
             guard path.count == edit.components.count else { continue }
             if setPath(&dict, path: path, value: parseValue(edit.editedText)) {
@@ -138,7 +184,9 @@ enum PLISTForge {
             return all
         }()
         return leaves.map { leaf in
-            ForgeKeyValue(components: leaf.components, originalText: describeLeaf(leaf.value))
+            ForgeKeyValue(components: leaf.components,
+                          originalText: describeLeaf(leaf.value),
+                          editable: isEditableLeaf(leaf.value))
         }
     }
 }
