@@ -76,7 +76,9 @@ NSArray<NSString *> *PathScannerEnumerate(NSString *path, uint64_t max_inode) {
 
     NSFileManager *files = [NSFileManager defaultManager];
     NSMutableArray<NSString *> *result = [NSMutableArray array];
-    char buffer[PATH_MAX];
+
+    char *prefixHeap = strdup(prefix);
+    char *privatePrefixHeap = privateLength > 0 ? strdup(privatePrefix) : NULL;
 
     uint64_t chunkSize = 262144;
     uint64_t chunkCount = (max_inode + chunkSize - 1) / chunkSize;
@@ -88,14 +90,16 @@ NSArray<NSString *> *PathScannerEnumerate(NSString *path, uint64_t max_inode) {
         uint64_t end = ((uint64_t)chunk + 1) * chunkSize;
         if (end > max_inode) end = max_inode;
 
+        char buffer[PATH_MAX];
+        fsid_t volFSID = fsid;
         NSMutableArray<NSString *> *local = [NSMutableArray array];
         for (uint64_t inode = start; inode <= end; inode++) {
-            ssize_t n = fsgetpath(buffer, sizeof(buffer), &fsid, inode);
+            ssize_t n = fsgetpath(buffer, sizeof(buffer), &volFSID, inode);
             if (n <= 0) continue;
 
-            BOOL matched = BFMatchPrefix(buffer, prefix, prefix_length);
-            if (!matched && privateLength > 0) {
-                matched = BFMatchPrefix(buffer, privatePrefix, privateLength);
+            BOOL matched = BFMatchPrefix(buffer, prefixHeap, prefix_length);
+            if (!matched && privatePrefixHeap) {
+                matched = BFMatchPrefix(buffer, privatePrefixHeap, privateLength);
             }
             if (!matched) continue;
 
@@ -108,6 +112,9 @@ NSArray<NSString *> *PathScannerEnumerate(NSString *path, uint64_t max_inode) {
             }
         }
     });
+
+    free(prefixHeap);
+    free(privatePrefixHeap);
 
     return [result sortedArrayUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
         return [a compare:b];
