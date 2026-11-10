@@ -16,29 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
-      - name: Install XcodeGen
-        run: brew install xcodegen
-      - name: Generate project
-        run: xcodegen generate
-      - name: Build (simulator)
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -project BlueForge.xcodeproj \
-            -scheme BlueForge \
-            -destination 'generic/platform=iOS Simulator' \
-            -configuration ${{ github.event.inputs.configuration }} \
-            clean build | xcpretty
-
   build-ipa:
     runs-on: macos-latest
-    needs: build
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
