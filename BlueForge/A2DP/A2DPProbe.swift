@@ -314,23 +314,8 @@ final class A2DPProbe: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
-            // Read each known path, then auto-drill: any readable directory
-            // gets its bluetooth-named entries read too (depth-limited).
-            func inspect(_ path: String, depth: Int) {
-                guard depth <= 2 else { return }
-                let f = self.read(path)
-                guard f.readable else { return }
-                self.findings.append(f)
-                var isDir: ObjCBool = false
-                guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir),
-                      isDir.boolValue else { return }
-                let entries = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
-                for entry in entries where BluetoothPathFilter.isBluetoothRelated(entry) {
-                    inspect(path + "/" + entry, depth: depth + 1)
-                }
-            }
             for dir in BluetoothSystemPath.dirs {
-                inspect(dir, depth: 0)
+                self.drill(dir, depth: 0)
             }
             for file in BluetoothSystemPath.files {
                 let f = self.read(file)
@@ -340,6 +325,38 @@ final class A2DPProbe: ObservableObject {
             }
             self.append("Probe finished — \(self.findings.count) findings")
             self.running = false
+        }
+    }
+
+    /// Read each known path, then auto-drill: any readable directory gets its
+    /// bluetooth-named entries read too (depth-limited).
+    private func drill(_ path: String, depth: Int) {
+        guard depth <= 2 else { return }
+        let f = read(path)
+        guard f.readable else { return }
+        findings.append(f)
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir),
+              isDir.boolValue else { return }
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
+        for entry in entries where BluetoothPathFilter.isBluetoothRelated(entry) {
+            drill(path + "/" + entry, depth: depth + 1)
+        }
+    }
+
+    /// Read a path and, if it is a readable directory, read its
+    /// bluetooth-named children (depth-limited auto-drill).
+    private func drill(_ path: String, depth: Int) {
+        guard depth <= 2 else { return }
+        let f = read(path)
+        guard f.readable else { return }
+        findings.append(f)
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir),
+              isDir.boolValue else { return }
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
+        for entry in entries where BluetoothPathFilter.isBluetoothRelated(entry) {
+            drill(path + "/" + entry, depth: depth + 1)
         }
     }
 
