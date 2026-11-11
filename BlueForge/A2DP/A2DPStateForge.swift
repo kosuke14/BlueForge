@@ -106,7 +106,21 @@ final class A2DPStateForge: ObservableObject {
                 self.candidates.append(.init(id: UUID(), path: dir, owner: (dir as NSString).lastPathComponent,
                                              isFile: false, writable: writable, note: note))
             }
-            // Then discover bluetooth-named files inside containers by name
+            // Identify daemon containers via per-file metadata reads; their
+            // Preferences dirs become forge candidates.
+            for root in [A2DPProbeRoot.systemData, .internalDaemon, .systemGroup] {
+                let found = await probe.enumerate(root: root)
+                let hits = await probe.identifyBluetooth(in: found)
+                for hit in hits {
+                    let prefs = hit.path + "/Library/Preferences"
+                    let (writable, note) = self.probeWritable(prefs)
+                    self.append("\(writable ? "WRITABLE" : "read-only") \(hit.id) prefs (\(note))")
+                    self.candidates.append(.init(id: UUID(), path: prefs,
+                                                 owner: hit.id, isFile: false,
+                                                 writable: writable, note: note))
+                }
+            }
+            // Discover bluetooth-named files inside containers by name
             // (deep pathleak) and offer them for direct file forging.
             let discovered = await probe.discoverBluetoothFiles()
             for path in discovered {

