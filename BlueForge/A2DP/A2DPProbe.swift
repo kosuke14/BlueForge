@@ -63,6 +63,24 @@ enum BluetoothPathFilter {
     ]
 }
 
+/// Bluetooth stack state lives OUTSIDE the container system (no "bluetooth
+/// system container" exists on iOS). These are the historical/actual paths —
+/// probed directly with the escape instead of scanning containers.
+enum BluetoothSystemPath {
+    static let dirs: [String] = [
+        "/private/var/wireless/Library/Preferences",
+        "/private/var/wireless/Library/Bluetooth",
+        "/private/var/wireless/Library",
+        "/private/var/preferences"
+    ]
+
+    static let files: [String] = [
+        "/private/var/wireless/Library/Preferences/com.apple.bluetooth.plist",
+        "/private/var/wireless/Library/Preferences/com.apple.bluetooth.services.plist",
+        "/private/var/mobile/Library/Preferences/com.apple.bluetooth.plist"
+    ]
+}
+
 struct A2DPProbeFinding: Identifiable {
     let id = UUID()
     let path: String
@@ -289,30 +307,14 @@ final class A2DPProbe: ObservableObject {
         running = true
         findings = []
         log = ""
-        append("BlueForge A2DP state probe (worse_query technique, read-only)")
+        append("Targeted A2DP probe: direct system paths, no container scanning")
 
         Task { [weak self] in
             guard let self else { return }
-            for root in A2DPProbeRoot.allCases {
-                let found = await self.enumerate(root: root)
-                let hits = await self.identifyBluetooth(in: found)
-                if hits.isEmpty {
-                    self.append("no bluetooth-owned containers under \(root.rawValue)")
-                }
-                for hit in hits {
-                    let f = self.read(hit.path)
-                    if f.readable || !f.summaryLines.isEmpty {
-                        self.findings.append(f)
-                    }
-                    // Peek inside known preference locations (read
-                    // tolerates nonexistent targets).
-                    for sub in BluetoothPathFilter.preferencesSubpaths {
-                        let subPath = hit.path + "/" + sub
-                        let sf = self.read(subPath)
-                        if sf.readable {
-                            self.findings.append(sf)
-                        }
-                    }
+            for path in BluetoothSystemPath.files + BluetoothSystemPath.dirs {
+                let f = self.read(path)
+                if f.readable {
+                    self.findings.append(f)
                 }
             }
             self.append("Probe finished — \(self.findings.count) findings")
@@ -460,7 +462,13 @@ final class A2DPProbe: ObservableObject {
         }
 
         let meta = path + "/.com.apple.mobile_container_manager.metadata.plist"
-        diagnoseOpen(meta, label: "metadata plist")
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: meta)),
+           let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
+            append("metadata READ ok (\(data.count) bytes): "
+                   + plist.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", "))
+        } else {
+            diagnoseOpen(meta, label: "metadata plist")
+        }
 
         let gp = path + "/Library/Preferences/.GlobalPreferences.plist"
         diagnoseOpen(gp, label: "GlobalPreferences")

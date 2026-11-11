@@ -93,21 +93,18 @@ final class A2DPStateForge: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
-            for root in A2DPProbeRoot.allCases {
-                let found = await probe.enumerate(root: root)
-                // Container dirs are UUID-named; ownership comes from the
-                // containermanager xattr, not the path.
-                let related = await probe.identifyBluetooth(in: found)
-                if related.isEmpty {
-                    self.append("no bluetooth-owned containers under \(root.rawValue)")
+            // Bluetooth state lives outside the container system; measure the
+            // known system directories directly.
+            for dir in BluetoothSystemPath.dirs {
+                let (writable, note) = self.probeWritable(dir)
+                guard note != "no extension" else {
+                    self.append("inaccessible: \(dir)")
+                    continue
                 }
-                for hit in related {
-                    let (writable, note) = self.probeWritable(hit.path)
-                    self.append("\(writable ? "WRITABLE" : "read-only") \(hit.id) (\(note))")
-                    self.candidates.append(.init(id: UUID(), path: hit.path,
-                                                 owner: hit.id,
-                                                 writable: writable, note: note))
-                }
+                self.append("\(writable ? "WRITABLE" : "read-only") \(dir) (\(note))")
+                self.candidates.append(.init(id: UUID(), path: dir,
+                                             owner: (dir as NSString).lastPathComponent,
+                                             writable: writable, note: note))
             }
             self.append("scan finished — \(self.candidates.count) candidates")
         }
