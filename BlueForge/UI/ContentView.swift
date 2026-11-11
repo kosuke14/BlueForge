@@ -5,7 +5,6 @@
 
 import SwiftUI
 import CoreBluetooth
-import UniformTypeIdentifiers
 import os
 
 enum AudioRole: String, CaseIterable, Identifiable {
@@ -17,7 +16,6 @@ enum AudioRole: String, CaseIterable, Identifiable {
 struct ContentView: View {
     @StateObject private var codecManager: CodecManager
     @StateObject private var ble: BLEAudioService
-    @StateObject private var pipeline: AudioPipeline
     @StateObject private var receiver: ReceiverPipeline
 
     @State private var role: AudioRole = .sender
@@ -26,16 +24,12 @@ struct ContentView: View {
     @State private var channels: Int = 2
     @AppStorage("bf.hasSeenGuide") private var hasSeenGuide = false
     @State private var showGuideSheet = false
-    @State private var showImporter = false
-    @State private var selectedMediaURL: URL?
-    @State private var mediaScopeActive = false
 
     init() {
         let cm = CodecManager()
         let b = BLEAudioService()
         _codecManager = StateObject(wrappedValue: cm)
         _ble = StateObject(wrappedValue: b)
-        _pipeline = StateObject(wrappedValue: AudioPipeline(codecManager: cm, ble: b))
         _receiver = StateObject(wrappedValue: ReceiverPipeline(codecManager: cm))
     }
 
@@ -151,32 +145,6 @@ struct ContentView: View {
                         }
                     }
 
-                    Section("Media") {
-                        Button("音源ファイルを選ぶ") { showImporter = true }
-                        if let name = pipeline.fileName {
-                            HStack {
-                                Image(systemName: "music.note")
-                                Text(name).lineLimit(1)
-                                Spacer()
-                                Text("\(Int(pipeline.progress * 100))%")
-                                    .foregroundColor(.secondary)
-                            }
-                            .font(.caption)
-                            ProgressView(value: pipeline.progress)
-                        }
-                        Button(pipeline.isRunning ? "停止" : "再生して配信") {
-                            if pipeline.isRunning {
-                                pipeline.stop()
-                            } else if let url = selectedMediaURL {
-                                do { try pipeline.startPlayback(url: url) }
-                                catch { pipeline.lastError = error.localizedDescription }
-                            }
-                        }
-                        .disabled(selectedMediaURL == nil && !pipeline.isRunning)
-                        if let err = pipeline.lastError {
-                            Text(err).font(.caption).foregroundColor(.red)
-                        }
-                    }
                 } else {
                     Section("Receiver (BLE)") {
                         Text("State: \(stateString(receiver.peripheralState))")
@@ -209,38 +177,13 @@ struct ContentView: View {
         .sheet(isPresented: $showGuideSheet, onDismiss: { hasSeenGuide = true }) {
             NavigationView { guide }
         }
-        .fileImporter(isPresented: $showImporter,
-                      allowedContentTypes: [.audio],
-                      allowsMultipleSelection: false) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                ingest(url)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .blueforgeIngestMedia)) { note in
-            if let url = note.object as? URL { ingest(url) }
-        }
         .onChange(of: role) { _ in
-            if pipeline.isRunning { pipeline.stop() }
             if receiver.isRunning { receiver.stop() }
         }
     }
 
     private var guide: some View {
-        GuideView(role: $role, bitrateKbps: $bitrateKbps, sampleRate: $sampleRate,
-                  channels: $channels,
-                  codecManager: codecManager, ble: ble, pipeline: pipeline, receiver: receiver)
-    }
-
-    /// Take ownership of a media URL (Files picker or "Open in BlueForge")
-    /// and start streaming it through the codec pipeline.
-    private func ingest(_ url: URL) {
-        if mediaScopeActive {
-            selectedMediaURL?.stopAccessingSecurityScopedResource()
-        }
-        mediaScopeActive = url.startAccessingSecurityScopedResource()
-        selectedMediaURL = url
-        do { try pipeline.startPlayback(url: url) }
-        catch { pipeline.lastError = error.localizedDescription }
+        GuideView()
     }
 
     private func applyFormat() {

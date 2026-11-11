@@ -2,303 +2,56 @@
 //  GuideView.swift
 //  BlueForge
 //
-//  Visual, goal-only tutorial: stream LDAC (or any supported codec) audio over
-//  BLE to a receiver. Everything the user needs for the primary goal lives
-//  here, with live status so the next action is always obvious. Advanced
-//  sandbox research is intentionally NOT part of this flow.
+//  Self-contained guide for the A2DP state research flow on escape-capable
+//  iOS (26.0–26.7.2 / 27.0–27.2): compatibility check, App Group setup,
+//  probe, forge, and verification.
 //
 
 import SwiftUI
-import CoreBluetooth
-import UniformTypeIdentifiers
 
 struct GuideView: View {
-    @Binding var role: AudioRole
-    @Binding var bitrateKbps: Int
-    @Binding var sampleRate: Int
-    @Binding var channels: Int
-    @ObservedObject var codecManager: CodecManager
-    @ObservedObject var ble: BLEAudioService
-    @ObservedObject var pipeline: AudioPipeline
-    @ObservedObject var receiver: ReceiverPipeline
-    @State private var showImporter = false
-    @State private var mediaURL: URL?
-
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                goalCard
-                progressHeader
-                stepCard(index: 1, "役割を選ぶ", done: true) {
-                    Picker("Role", selection: $role) {
-                        ForEach(AudioRole.allCases) { r in Text(r.rawValue).tag(r) }
-                    }
-                    .pickerStyle(.segmented)
-                    Text(role == .sender
-                         ? "この iPhone がスピーカー/レシーバーへ音声を送ります。"
-                         : "この iPhone がサウンドを出力します(もう一台が送信)。")
-                        .font(.caption).foregroundColor(.secondary)
+        Form {
+            let compat = ExploitCompatibility.status()
+
+            Section("0. 対応バージョン") {
+                HStack {
+                    Image(systemName: compat.supported ? "checkmark.seal.fill" : "xmark.seal.fill")
+                        .foregroundColor(compat.supported ? .green : .red)
+                    Text(compat.title).font(.subheadline.weight(.semibold))
                 }
-
-                stepCard(index: 2, "コーデックを選ぶ", done: codecManager.lastError == nil) {
-                    Picker("Codec", selection: $codecManager.selected) {
-                        ForEach(CodecID.allCases) { c in Text(c.rawValue).tag(c) }
-                    }
-                    .pickerStyle(.segmented)
-                    if codecManager.selected == .ldac {
-                        Text("LDAC は高ビットレート(990kbps)で BLE に対しては重め。安定しない場合は AAC/SBC 256kbps から始めてください。")
-                            .font(.caption).foregroundColor(.secondary)
-                    }
-                    if let err = codecManager.lastError {
-                        Text(err).font(.caption).foregroundColor(.red)
-                    }
-                }
-
-                stepCard(index: 3, "フォーマットを両端で一致させる", done: true) {
-                    HStack {
-                        Picker("SR", selection: $sampleRate) {
-                            ForEach([16000, 32000, 44100, 48000, 96000], id: \.self) { r in
-                                Text("\(r)").tag(r)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .onChange(of: sampleRate) { _ in applyFormat() }
-
-                        Picker("Ch", selection: $channels) {
-                            Text("Mono").tag(1)
-                            Text("Stereo").tag(2)
-                        }
-                        .pickerStyle(.menu)
-                        .onChange(of: channels) { _ in applyFormat() }
-
-                        Picker("kbps", selection: $bitrateKbps) {
-                            ForEach([128, 192, 256, 320, 512, 990], id: \.self) { b in
-                                Text("\(b)").tag(b)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .onChange(of: bitrateKbps) { _ in applyFormat() }
-                    }
-                    Text("受信側アプリで同じ値(コーデック/Hz/チャンネル/kbps)を選んでください。自動ネゴシエーションはありません。")
-                        .font(.caption).foregroundColor(.secondary)
-                    HStack(spacing: 8) {
-                        ForEach(formatChips, id: \.self) { chip in
-                            Text(chip)
-                                .font(.caption2.monospaced())
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.accentColor.opacity(0.15))
-                                .clipShape(Capsule())
-                        }
-                    }
-                }
-
-                if role == .sender {
-                    stepCard(index: 4, "BLE: 相手に接続", done: ble.state == .poweredOn && ble.connected) {
-                        Text("State: \(stateString(ble.state))")
-                            .font(.caption).foregroundColor(.secondary)
-                        Button(ble.connected ? "切断" : "スキャンして接続") {
-                            if ble.connected { ble.disconnect() } else { ble.startScan() }
-                        }
-                        .buttonStyle(.bordered)
-                        if !ble.connected {
-                            ForEach(ble.discoveredPeripherals, id: \.identifier) { p in
-                                Button {
-                                    ble.connect(p)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "dot.radiowaves.left.and.right")
-                                        Text(p.name ?? p.identifier.uuidString)
-                                        Spacer()
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    stepCard(index: 5, "音源ファイルを選んで配信開始", done: pipeline.isRunning) {
-                        Button {
-                            showImporter = true
-                        } label: {
-                            Label("ファイルを選ぶ", systemImage: "folder")
-                        }
-                        .buttonStyle(.bordered)
-                        if let name = pipeline.fileName {
-                            Text(name).font(.caption).foregroundColor(.secondary)
-                            ProgressView(value: pipeline.progress)
-                        }
-                        Button {
-                            if pipeline.isRunning {
-                                pipeline.stop()
-                            } else if let url = mediaURL {
-                                do { try pipeline.startPlayback(url: url) }
-                                catch { pipeline.lastError = error.localizedDescription }
-                            }
-                        } label: {
-                            Label(pipeline.isRunning ? "停止" : "再生して配信",
-                                  systemImage: pipeline.isRunning ? "stop.fill" : "play.fill")
-                                .padding(.horizontal, 12)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(mediaURL == nil && !pipeline.isRunning)
-                        if let err = pipeline.lastError {
-                            Text(err).font(.caption).foregroundColor(.red)
-                        }
-                    }
-                } else {
-                    stepCard(index: 4, "受信を開始(待ち受け)", done: receiver.isAdvertising) {
-                        Button {
-                            if receiver.isRunning { receiver.stop() } else { receiver.start() }
-                        } label: {
-                            Label(receiver.isRunning ? "停止" : "レシーバー起動",
-                                  systemImage: receiver.isRunning ? "stop.fill" : "speaker.wave.2.fill")
-                                .padding(.horizontal, 12)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        HStack {
-                            Text("待受中")
-                            Spacer()
-                            Text(receiver.isAdvertising ? "Yes" : "No")
-                                .foregroundColor(receiver.isAdvertising ? .green : .secondary)
-                        }
-                        .font(.caption)
-                        if let err = receiver.lastError {
-                            Text(err).font(.caption).foregroundColor(.red)
-                        }
-                    }
-
-                    stepCard(index: 5, "音を受け取って再生", done: receiver.isRunning && receiver.isAdvertising) {
-                        Text("送信側から本デバイス(BlueForge RX)を選ぶと、コーデック済みフレームを受信して再生します。両アプリはフォアグラウンド推奨です。")
-                            .font(.caption).foregroundColor(.secondary)
-                    }
-                }
-
-                honestyCard
+                Text(compat.note)
+                    .font(.caption).foregroundColor(.secondary)
             }
-            .padding(16)
+
+            Section("1. App Group (エスケープの足場)") {
+                Text("LiveContainer / SideStore 等で再署名する場合、ホスト IPA に App Group entitlement が付いていれば自動検出します (入力不要)。Free アカウントでは App Group を使えないため、有料署名または TrollStore が必要です。")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+
+            Section("2. 状態を測る (probe)") {
+                NavigationLink("System probe を開く") { SystemProbeView() }
+                Text("Bluetooth の状態は /var/wireless 系 (kernel 拒否) ではなく、コンテナ内を per-file extension で読みに行きます。デーモンコンテナの所有者は metadata plist で特定します。")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+
+            Section("3. 書き込みを実測する (CodecForge)") {
+                NavigationLink("CodecForge を開く") { ForgeView() }
+                Text("各ディレクトリでマーカーファイル生成/削除により WRITABLE を実測します。WRITABLE な場合のみ plist 編集が有効化され、書き込みはバックアップ/読み返し検証/自動復元付きです。")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+
+            Section("4. 効果の検証") {
+                Text("コントロールセンターで Bluetooth を切替 → bluetoothd が状態を再読込 → 再 probe で差分を確認。全試行は forge_history.json に記録されます。")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+
+            Section("正直なスコープ") {
+                Text("bluetoothd 内部へのコード注入 (A2DP SEP ネゴシエーション差し替え) は、脱獄ランタイムでのみ可能です。このアプリは脱獄検知時にその経路の設計 (docs/SANDBOX_A2DP.md) に接続しますが、エクスプロイトそのものは含みません。")
+                    .font(.caption).foregroundColor(.secondary)
+            }
         }
-        .background(Color(.systemGroupedBackground))
         .navigationTitle("スタートガイド")
         .navigationBarTitleDisplayMode(.inline)
-        .fileImporter(isPresented: $showImporter,
-                      allowedContentTypes: [.audio],
-                      allowsMultipleSelection: false) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                _ = url.startAccessingSecurityScopedResource()
-                mediaURL = url
-                do { try pipeline.startPlayback(url: url) }
-                catch { pipeline.lastError = error.localizedDescription }
-            }
-        }
-    }
-
-    private var goalCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("目的: A2DP コーデックの拡張(音質・遅延の改善)", systemImage: "target").font(.headline)
-            Text("音源は iPhone 内のオーディオ(LDAC は 96kHz まで対応)。本アプリで再生/エンコードし BLE で受信側へ送ることで、サンプリングレート向上などのコーデック差し替え効果を得ます。エスケープ対応 iOS では Bluetooth 状態の実測・編集実験(上級)も可能です。")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text("制限: コントロールセンターの AirPlay/出力先で切り替わる“他アプリのシステム音声”は脱獄なしでは取得できません(iOS にサードパイヤ向け process tap が無いため)。他アプリの音は“共有 → BlueForge で開く”で渡してください。")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.accentColor.opacity(0.12)))
-    }
-
-    private var totalSteps: Int { 5 }
-    private var completedSteps: Int {
-        var n = 2 // steps 1 and 3 are configuration confirmations
-        if codecManager.lastError == nil { n += 1 }
-        if role == .sender {
-            if ble.state == .poweredOn && ble.connected { n += 1 }
-            if pipeline.isRunning { n += 1 }
-        } else {
-            if receiver.isAdvertising { n += 1 }
-            if receiver.isRunning && receiver.isAdvertising { n += 1 }
-        }
-        return n
-    }
-
-    private var progressHeader: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("進捗 \(completedSteps)/\(totalSteps)")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                if completedSteps == totalSteps {
-                    Label("配信中", systemImage: "checkmark.seal.fill")
-                        .font(.subheadline)
-                        .foregroundColor(.green)
-                }
-            }
-            ProgressView(value: Double(completedSteps), total: Double(totalSteps))
-                .tint(completedSteps == totalSteps ? .green : .accentColor)
-        }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemGroupedBackground)))
-    }
-
-    private var formatChips: [String] {
-        ["\(codecManager.selected.rawValue)",
-         "\(sampleRate) Hz",
-         channels == 2 ? "Stereo" : "Mono",
-         "\(bitrateKbps) kbps"]
-    }
-
-    private var honestyCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("正直なスコープ", systemImage: "info.circle").font(.subheadline.weight(.semibold))
-            Text("市販ヘッドフォンとの Bluetooth Classic A2DP コーデック(LDAC/aptX 等)の選択は、脱獄無しのこのアプリからは変更できません(iOS がシステム側で決定)。このガイドの配信は、BlueForge 受信アプリや BLE 対応レシーバーのために設計されています。")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemGroupedBackground)))
-    }
-
-    @ViewBuilder
-    private func stepCard(index: Int, _ title: String, done: Bool,
-                          @ViewBuilder content: () -> some View) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(done ? Color.green.opacity(0.2) : Color.accentColor.opacity(0.15))
-                    .frame(width: 30, height: 30)
-                if done {
-                    Image(systemName: "checkmark")
-                        .font(.footnote.bold()).foregroundColor(.green)
-                } else {
-                    Text("\(index)").font(.footnote.bold()).foregroundColor(.accentColor)
-                }
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title).font(.subheadline.weight(.semibold))
-                content()
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemGroupedBackground)))
-    }
-
-    private func stateString(_ s: CBManagerState) -> String {
-        switch s {
-        case .poweredOn: return "Powered On"
-        case .poweredOff: return "Powered Off"
-        case .resetting: return "Resetting"
-        case .unauthorized: return "Unauthorized"
-        case .unsupported: return "Unsupported"
-        default: return "Unknown"
-        }
-    }
-
-    private func applyFormat() {
-        codecManager.configure(
-            format: PCMFormat(sampleRate: Double(sampleRate), channels: channels, bitsPerSample: 16),
-            bitrate: bitrateKbps * 1000
-        )
     }
 }

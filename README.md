@@ -1,49 +1,38 @@
 # BlueForge – Bluetooth Audio Codec Extender (jailed iOS)
 
-A prototype iOS app that encodes **media files** with a selectable Bluetooth
-audio codec (LDAC / SBC / AAC / LC3) and streams the encoded frames over BLE
-to a paired receiver — e.g. another iPhone running this app (any wired
-headphones) or custom BLE receiver firmware. The microphone is not used.
+A research prototype targeting **A2DP codec extension on jailed iOS**
+(escape-capable versions: iOS 26.0–26.7.2 / 27.0–27.2, device-verified on
+27.2). It measures Bluetooth stack state through the worse_query sandbox
+escape (per-file extension reads) and experiments with measured-writable
+state (CodecForge). No microphone, no media playback, no custom hardware.
 
-## Quick start (5 steps, in-app guide)
+## Quick start (in-app guide)
 
-Open the app once → the **guide** shows up automatically (or "高音質コーデック配信ガイド"
-on top of the main screen). It walks the original goal — send codec-encoded
-audio from an iPhone — using live status:
+Open the app once — the guide shows up automatically (or from "Start here").
+It walks the research flow with an explicit compatibility check:
 
-1. **Role**: Sender on the streaming iPhone, Receiver on the playing device
-   (another iPhone with BlueForge, or BLE firmware receiver).
-2. **Codec**: pick LDAC/SBC/AAC/LC3. Start with SBC or AAC 256 kbps; LDAC
-   990 kbps can exceed BLE throughput.
-3. **Format**: set the same Hz / channels / kbps on both sides (no automatic
-   negotiation).
-4. **BLE**: sender → Scan, tap the device; receiver → Start Receiver
-   (advertises as `BlueForge RX`).
-5. **Stream**: sender picks a media file (Files app) and taps play;
-   received frames decode and play through AVAudioEngine. No microphone is
-   used anywhere in the app.
+1. **Compatibility**: iOS 26.0–26.7.2 / 27.0–27.2 supported (27.2 device-verified).
+2. **App Group**: any signed group works — auto-detected at runtime
+   (LiveContainer/SideStore hosts included).
+3. **Probe**: direct per-file extension reads of Bluetooth stack state;
+   daemon containers identified via their metadata plists.
+4. **CodecForge**: writability measured with harmless marker files;
+   writable targets get a transactional plist editor (backup, readback
+   verification, auto-restore, full attempt history).
+5. **Verify**: toggle Bluetooth so bluetoothd reloads state, re-probe,
+   compare.
 
-Everything advanced (sandbox probes, CodecForge experiments) lives under
-**上級** links and is not needed for the above.
+Everything lives under "上級" links on the main screen.
 
-## Clarified goal (what this app actually does)
+## Clarified goal
 
-On iOS versions where the worse_query sandbox escape works (26.0–26.7.2 /
-27.2), BlueForge targets **A2DP codec extension for quality/latency**:
-
-- **Source**: audio on the iPhone — played in-app (media files) or handed over
-  from any app via the share sheet / "Open in BlueForge" (`public.audio`
-  document type). LDAC supports up to 96 kHz sources.
-- **Effect**: replacing the transport codec (SBC → LDAC etc.) raises the
-  sampling rate / bitrate and can cut latency versus the default path.
-- **Known hard limits (jailed iOS)**:
-  - The *system-wide* audio routed through the Control Center AirPlay/output
-    picker (other apps' sound) cannot be captured — iOS exposes no
-    third-party process-tap API (ReplayKit only returns the originating
-    app's audio). Hand such audio over via "Open in BlueForge" instead.
-  - Changing the A2DP SEP negotiation of *commercial* headphones remains a
-    jailbreak-only operation; CodecForge experiments on the escape-enabled
-    versions are the research path toward it.
+Extend the A2DP profile (quality/latency: LDAC-class codecs, higher sampling
+rates) on **jailed, escape-capable iOS**. The app pursues this with
+state-level research (probe/forge of the Bluetooth stack's persisted state)
+and a design for hook integration behind a jailbreak runtime. Code injection
+into bluetoothd (and any PPL-bypass-style exploit development) is out of
+scope for this project; the hook layer activates only on an existing
+jailbreak runtime (docs/SANDBOX_A2DP.md).
 
 ## Honest scope / limitations (read first)
 

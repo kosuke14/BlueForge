@@ -15,6 +15,16 @@ struct SystemProbeView: View {
 
     var body: some View {
         Form {
+            let compat = ExploitCompatibility.status()
+            Section("Compatibility") {
+                HStack {
+                    Image(systemName: compat.supported ? "checkmark.seal.fill" : "xmark.seal.fill")
+                        .foregroundColor(compat.supported ? .green : .red)
+                    Text(compat.title).font(.subheadline.weight(.semibold))
+                }
+                Text(compat.note).font(.caption2).foregroundColor(.secondary)
+            }
+
             Section("App Group (escape vehicle)") {
                 TextField("group identifier", text: $appGroup)
                     .disableAutocorrection(true)
