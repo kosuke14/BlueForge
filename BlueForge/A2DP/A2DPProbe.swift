@@ -328,22 +328,6 @@ final class A2DPProbe: ObservableObject {
         }
     }
 
-    /// Read each known path, then auto-drill: any readable directory gets its
-    /// bluetooth-named entries read too (depth-limited).
-    private func drill(_ path: String, depth: Int) {
-        guard depth <= 2 else { return }
-        let f = read(path)
-        guard f.readable else { return }
-        findings.append(f)
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir),
-              isDir.boolValue else { return }
-        let entries = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
-        for entry in entries where BluetoothPathFilter.isBluetoothRelated(entry) {
-            drill(path + "/" + entry, depth: depth + 1)
-        }
-    }
-
     /// Read a path and, if it is a readable directory, read its
     /// bluetooth-named children (depth-limited auto-drill).
     private func drill(_ path: String, depth: Int) {
