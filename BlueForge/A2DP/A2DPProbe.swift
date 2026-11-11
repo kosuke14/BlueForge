@@ -348,8 +348,7 @@ final class A2DPProbe: ObservableObject {
         let prefixes = A2DPProbeRoot.allCases.map(\.rawValue)
         let keywords = BluetoothPathFilter.keywords
         let found = await Task.detached(priority: .userInitiated) {
-            (PathScannerEnumerateDeep(prefixes as [NSString], inodeLimit,
-                                      keywords as [NSString], 200)
+            (PathScannerEnumerateDeep(prefixes, inodeLimit, keywords, 200)
              as? [String]) ?? []
         }.value
         append("deep scan: \(found.count) bluetooth-named paths under containers")
