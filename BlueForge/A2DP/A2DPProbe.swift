@@ -167,14 +167,14 @@ final class A2DPProbe: ObservableObject {
     /// fixed by creating Library/Caches, then retrying — same as GestaltX).
     /// The default group is normally rejected once per process (the fallback
     /// signed group is the one that works), so that failure logs only once.
-    func consumeFor(_ target: String) -> Int64 {
+    func consumeFor(_ target: String, createDir: Bool = false) -> Int64 {
         let alt = altFlags(target)
         var lastHandle: Int64 = -1
         for (index, candidate) in candidateGroups().enumerated() {
-            var handle = SandboxExtensionConsume(target, candidate, alt, false)
+            var handle = SandboxExtensionConsume(target, candidate, alt, createDir)
             if handle == -4 {
                 ensureCaches(candidate)
-                handle = SandboxExtensionConsume(target, candidate, alt, false)
+                handle = SandboxExtensionConsume(target, candidate, alt, createDir)
             }
             if handle > 0 {
                 if loggedWorkingGroup != candidate {
@@ -267,7 +267,12 @@ final class A2DPProbe: ObservableObject {
     /// Try to read a file/dir after consuming an extension; releases the handle
     /// immediately afterwards.
     func read(_ target: String) -> A2DPProbeFinding {
-        let handle = consumeFor(target)
+        var handle = consumeFor(target)
+        if handle == -255 {
+            // fsgetpath-discovered paths can be lstat-invisible while still
+            // existing; skip the existence check and try the query directly.
+            handle = consumeFor(target, createDir: true)
+        }
         guard handle > 0 else {
             append("  - can't access: \(target)")
             return A2DPProbeFinding(path: target, readable: false, summaryLines: [])
@@ -346,19 +351,24 @@ final class A2DPProbe: ObservableObject {
         append("deep scan: full-volume inode pass for bluetooth-named paths (parallel)…")
         let inodeLimit = baselineInode
         let prefixes = A2DPProbeRoot.allCases.map(\.rawValue)
-        let keywords = BluetoothPathFilter.keywords
+        // "codec" matches python/wine payloads; keep the scan Apple-BT-tight.
+        let keywords = ["bluetooth", "blued", "a2dp", "aptx", "ldac"]
         let found = await Task.detached(priority: .userInitiated) {
             (PathScannerEnumerateDeep(prefixes, inodeLimit, keywords, 200)
              as? [String]) ?? []
         }.value
-        append("deep scan: \(found.count) bluetooth-named paths under containers")
-        for path in found.prefix(50) {
+        // LiveContainer/Linux-root contents are guest noise, not system state.
+        let filtered = found.filter { path in
+            !path.contains("/LiveContainer/") && !path.contains("/roots/")
+        }
+        append("deep scan: \(found.count) raw, \(filtered.count) after noise filtering")
+        for path in filtered.prefix(50) {
             append("  # \(path)")
         }
-        if found.count > 50 {
-            append("  … and \(found.count - 50) more")
+        if filtered.count > 50 {
+            append("  … and \(filtered.count - 50) more")
         }
-        return found
+        return filtered
     }
 
     /// Read a path and, if it is a readable directory, read its
