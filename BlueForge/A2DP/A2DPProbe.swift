@@ -71,12 +71,15 @@ enum BluetoothSystemPath {
         "/private/var/wireless/Library/Preferences",
         "/private/var/wireless/Library/Bluetooth",
         "/private/var/wireless/Library",
-        "/private/var/preferences"
+        "/private/var/preferences",
+        "/private/var/db"
     ]
 
     static let files: [String] = [
         "/private/var/wireless/Library/Preferences/com.apple.bluetooth.plist",
         "/private/var/wireless/Library/Preferences/com.apple.bluetooth.services.plist",
+        "/private/var/preferences/com.apple.bluetooth.plist",
+        "/private/var/preferences/com.apple.blued.plist",
         "/private/var/mobile/Library/Preferences/com.apple.bluetooth.plist"
     ]
 }
@@ -311,8 +314,26 @@ final class A2DPProbe: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
-            for path in BluetoothSystemPath.files + BluetoothSystemPath.dirs {
+            // Read each known path, then auto-drill: any readable directory
+            // gets its bluetooth-named entries read too (depth-limited).
+            func inspect(_ path: String, depth: Int) {
+                guard depth <= 2 else { return }
                 let f = self.read(path)
+                guard f.readable else { return }
+                self.findings.append(f)
+                var isDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir),
+                      isDir.boolValue else { return }
+                let entries = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
+                for entry in entries where BluetoothPathFilter.isBluetoothRelated(entry) {
+                    inspect(path + "/" + entry, depth: depth + 1)
+                }
+            }
+            for dir in BluetoothSystemPath.dirs {
+                inspect(dir, depth: 0)
+            }
+            for file in BluetoothSystemPath.files {
+                let f = self.read(file)
                 if f.readable {
                     self.findings.append(f)
                 }

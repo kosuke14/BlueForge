@@ -34,14 +34,17 @@ replicates worse_query's rule.
 
 `BlueForge/A2DP/A2DPProbe.swift` — A2DP stack introspection:
 
-- Enumerates the roots worse_query catalogues (`/var/containers/Data/System`,
-  `/var/containers/Shared/SystemGroup`, `/var/mobile/Containers/Data/InternalDaemon`,
-  `/var/mobile/Containers/Data/PluginKitPlugin`, `/var/mobile/Containers/Shared/AppGroup`).
-- Filters hits for Bluetooth-related containers (`blued`, `com.apple.bluetooth`,
-  `a2dp`, codec/plist paths).
-- Reads each candidate (pairing records, bluetoothd preferences) and extracts
-  codec-relevant signals (`sbc`/`aac`/`aptx`/`ldac`/`lc3` keys) via the
-  testable `A2DPIntrospection` helpers.
+- **Targeted path probe** (no container scanning): Bluetooth stack state lives
+  *outside* the container system — there is no "bluetooth system container" on
+  iOS. The escape issues extensions directly for the actual locations:
+  `/var/wireless/Library/Preferences/com.apple.bluetooth*`,
+  `/var/wireless/Library/Bluetooth/`, `/var/preferences`,
+  `/var/mobile/Library/Preferences/com.apple.bluetooth.plist`.
+- Readable directories are auto-drilled (depth 2) for bluetooth-named entries,
+  and every readable plist is parsed for codec signals
+  (`sbc`/`aac`/`aptx`/`ldac`/`lc3`) via the testable `A2DPIntrospection` helpers.
+- Container enumeration (`pathleak`, parentdir) remains available for research
+  (Diagnostics button) but is not part of the main probe anymore.
 
 `BlueForge/A2DP/A2DPHook.swift` — hook strategy layer:
 

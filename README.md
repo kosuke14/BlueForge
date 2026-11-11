@@ -115,11 +115,11 @@ Source-complete prototype (validated C bridges on Linux; iOS compile via CI):
 - BLE central sender and BLE peripheral receiver with length-prefixed frames.
 - AVAudioEngine capture conversion, codec-sized framing, and playback.
 - SwiftUI role/codec/format controls, XCTest suite, XcodeGen project.
-- A2DP stack introspection via the worse_query sandbox-escape technique
-  (containermanagerd extension + pathleak enumeration). **Read-only on a jailed
-  device** — it reveals bluetoothd state/codec signals, it cannot re-negotiate
-  the A2DP codec; see `docs/SANDBOX_A2DP.md` and the in-app
-  "A2DP system access" screen.
+- A2DP stack introspection via the worse_query sandbox-escape technique:
+  sandbox extensions issued directly for the real Bluetooth state paths
+  (`/var/wireless/Library/...` — no Bluetooth container exists on iOS).
+  Reveals bluetoothd state/codec signals; cannot re-negotiate the A2DP codec.
+  See `docs/SANDBOX_A2DP.md` and the in-app "上級" screen.
 - CodecForge (experimental): the escape is treated as a *possible writer* —
   per-container writability is measured with harmless marker files, and only
   proven-writable targets get a transactional plist editor (atomic rename-in,

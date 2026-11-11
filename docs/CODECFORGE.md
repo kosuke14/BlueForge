@@ -5,12 +5,13 @@
 The probe (see `SANDBOX_A2DP.md`) established *read* access. CodecForge stops
 pretending the write question is already answered and measures it:
 
-1. **Scan** — enumerate Bluetooth-related containers via pathleak and, for each,
-   consume a sandbox extension and attempt a marker-file create/delete inside
-   it. The result (`WRITABLE` vs `read-only`) is *measured*, never assumed —
-   kernel extension semantics on iOS 26/27 are not documented publicly, and the
-   only way to know is to try, in a way that cannot damage anything (unique
-   name, immediate remove).
+1. **Scan** — consume a sandbox extension for each known Bluetooth system
+   directory (`/var/wireless/Library/Preferences`, `/var/wireless/Library/Bluetooth`,
+   `/var/wireless/Library`, `/var/preferences`) and attempt a marker-file
+   create/delete inside it. The result (`WRITABLE` vs `read-only`) is
+   *measured*, never assumed — kernel extension semantics on iOS 26/27 are not
+   documented publicly, and the only way to know is to try, in a way that
+   cannot damage anything (unique name, immediate remove).
 2. **Edit** — if (and only if) a container measures writable, its plist files
    can be loaded into an editor that shows codec-flavoured keys
    (`PLISTForge.codecLeaves` matches `sbc/aac/aptx/ldac/lc3/opus` in keys or
