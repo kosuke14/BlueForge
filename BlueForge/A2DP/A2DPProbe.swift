@@ -323,9 +323,43 @@ final class A2DPProbe: ObservableObject {
                     self.findings.append(f)
                 }
             }
+            // System paths outside containers are kernel-refused; discover
+            // bluetooth-named FILES inside containers by name instead.
+            let discovered = await self.discoverBluetoothFiles()
+            for path in discovered {
+                let f = self.read(path)
+                if f.readable {
+                    self.findings.append(f)
+                }
+            }
             self.append("Probe finished — \(self.findings.count) findings")
             self.running = false
         }
+    }
+
+    /// Deep file discovery: one full-volume pathleak pass keeping only paths
+    /// under container roots that mention bluetooth-ish keywords, at ANY
+    /// depth. fsgetpath needs no read permission, so files inside unreadable
+    /// containers are discoverable by name.
+    func discoverBluetoothFiles() async -> [String] {
+        computeBaselineIfNeeded()
+        append("deep scan: full-volume inode pass for bluetooth-named paths (parallel)…")
+        let inodeLimit = baselineInode
+        let prefixes = A2DPProbeRoot.allCases.map(\.rawValue)
+        let keywords = BluetoothPathFilter.keywords
+        let found = await Task.detached(priority: .userInitiated) {
+            (PathScannerEnumerateDeep(prefixes as [NSString], inodeLimit,
+                                      keywords as [NSString], 200)
+             as? [String]) ?? []
+        }.value
+        append("deep scan: \(found.count) bluetooth-named paths under containers")
+        for path in found.prefix(50) {
+            append("  # \(path)")
+        }
+        if found.count > 50 {
+            append("  … and \(found.count - 50) more")
+        }
+        return found
     }
 
     /// Read a path and, if it is a readable directory, read its

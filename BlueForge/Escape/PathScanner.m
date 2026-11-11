@@ -34,6 +34,87 @@ static BOOL BFMatchPrefix(const char *buffer, const char *prefix, size_t prefix_
     return YES;
 }
 
+NSArray<NSString *> *PathScannerEnumerateDeep(NSArray<NSString *> *prefixes,
+                                              uint64_t max_inode,
+                                              NSArray<NSString *> *keywords,
+                                              NSUInteger maxResults) {
+    if (prefixes.count == 0 || max_inode < 1 || keywords.count == 0) return nil;
+
+    struct statfs sfs;
+    const char *fallbacks[] = { "/private/var/mobile", "/var/mobile" };
+    BOOL ok = NO;
+    for (size_t i = 0; i < sizeof(fallbacks) / sizeof(fallbacks[0]); i++) {
+        if (statfs(fallbacks[i], &sfs) == 0) { ok = YES; break; }
+    }
+    if (!ok) return nil;
+    fsid_t fsid = sfs.f_fsid;
+
+    NSMutableArray<NSString *> *normPrefixes = [NSMutableArray array];
+    for (NSString *raw in prefixes) {
+        NSString *dir = raw;
+        while (dir.length > 1 && [dir hasSuffix: @"/"]) {
+            dir = [dir substringToIndex: dir.length - 1];
+        }
+        [normPrefixes addObject: dir];
+        if ([dir hasPrefix: @"/var/"]) [normPrefixes addObject: [@"/private" stringByAppendingString: dir]];
+        else if ([dir hasPrefix: @"/private/var/"]) [normPrefixes addObject: [dir substringFromIndex: 8]];
+    }
+
+    NSMutableArray<NSString *> *lowerKeywords = [NSMutableArray array];
+    for (NSString *kw in keywords) [lowerKeywords addObject: kw.lowercaseString];
+
+    NSFileManager *files = [NSFileManager defaultManager];
+    NSMutableArray<NSString *> *result = [NSMutableArray array];
+    __block BOOL overflow = NO;
+
+    uint64_t chunkSize = 262144;
+    uint64_t chunkCount = (max_inode + chunkSize - 1) / chunkSize;
+
+    dispatch_apply((NSUInteger)chunkCount,
+                   dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0),
+                   ^(size_t chunk) {
+        if (overflow) return;
+        uint64_t start = (uint64_t)chunk * chunkSize + 1;
+        uint64_t end = ((uint64_t)chunk + 1) * chunkSize;
+        if (end > max_inode) end = max_inode;
+
+        char buffer[PATH_MAX];
+        fsid_t volFSID = fsid;
+        NSMutableArray<NSString *> *local = [NSMutableArray array];
+        for (uint64_t inode = start; inode <= end; inode++) {
+            ssize_t n = fsgetpath(buffer, sizeof(buffer), &volFSID, inode);
+            if (n <= 0) continue;
+
+            NSString *path = [files stringWithFileSystemRepresentation: buffer length: strlen(buffer)];
+            if (!path) continue;
+            BOOL under = NO;
+            for (NSString *prefix in normPrefixes) {
+                if ([path hasPrefix: prefix]) { under = YES; break; }
+            }
+            if (!under) continue;
+            NSString *lowered = path.lowercaseString;
+            BOOL hit = NO;
+            for (NSString *kw in lowerKeywords) {
+                if ([lowered containsString: kw]) { hit = YES; break; }
+            }
+            if (!hit) continue;
+
+            [local addObject: path];
+            if (local.count + result.count >= maxResults) { overflow = YES; return; }
+        }
+        if (local.count > 0) {
+            @synchronized (result) {
+                [result addObjectsFromArray: local];
+                if (result.count >= maxResults) overflow = YES;
+            }
+        }
+    });
+
+    return [result sortedArrayUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
+        return [a compare:b];
+    }];
+}
+
 NSArray<NSString *> *PathScannerEnumerate(NSString *path, uint64_t max_inode) {
     if (path.length == 0 || max_inode < 1) return nil;
     NSString *dir = path;

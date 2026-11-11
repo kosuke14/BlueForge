@@ -36,7 +36,12 @@ struct ForgeView: View {
 
                 ForEach(forge.candidates) { candidate in
                     Button(candidate.owner) {
-                        forge.inspectDir(candidate.path)
+                        if candidate.isFile {
+                            forge.inspectFile(candidate.path,
+                                              dir: (candidate.path as NSString).deletingLastPathComponent)
+                        } else {
+                            forge.inspectDir(candidate.path)
+                        }
                     }
                     .foregroundColor(candidate.writable ? .green : .secondary)
                     Text(candidate.path)

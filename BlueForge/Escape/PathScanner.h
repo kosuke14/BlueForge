@@ -22,4 +22,13 @@
 // `max_inode`. Slow (linear inode scan); cache the result.
 NSArray<NSString *> *PathScannerEnumerate(NSString *filter, uint64_t max_inode);
 
+// One full-volume inode scan; keep every path UNDER any of `prefixes`
+// (either /var or /private/var form) that contains any of `keywords`
+// (case-insensitive), at any depth. fsgetpath resolves paths without read
+// permission, so files inside unreadable containers are discoverable by name.
+NSArray<NSString *> *PathScannerEnumerateDeep(NSArray<NSString *> *prefixes,
+                                              uint64_t max_inode,
+                                              NSArray<NSString *> *keywords,
+                                              NSUInteger maxResults);
+
 #endif /* PathScanner_h */

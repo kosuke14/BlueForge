@@ -72,6 +72,7 @@ final class A2DPStateForge: ObservableObject {
         let id: UUID
         let path: String
         let owner: String
+        let isFile: Bool
         let writable: Bool
         let note: String
     }
@@ -102,9 +103,19 @@ final class A2DPStateForge: ObservableObject {
                     continue
                 }
                 self.append("\(writable ? "WRITABLE" : "read-only") \(dir) (\(note))")
-                self.candidates.append(.init(id: UUID(), path: dir,
-                                             owner: (dir as NSString).lastPathComponent,
-                                             writable: writable, note: note))
+                self.candidates.append(.init(id: UUID(), path: dir, owner: (dir as NSString).lastPathComponent,
+                                             isFile: false, writable: writable, note: note))
+            }
+            // Then discover bluetooth-named files inside containers by name
+            // (deep pathleak) and offer them for direct file forging.
+            let discovered = await probe.discoverBluetoothFiles()
+            for path in discovered {
+                let dir = (path as NSString).deletingLastPathComponent
+                let (writable, note) = self.probeWritable(dir)
+                self.append("\(writable ? "WRITABLE" : "read-only") file \(path) (\(note))")
+                self.candidates.append(.init(id: UUID(), path: path,
+                                             owner: (path as NSString).lastPathComponent,
+                                             isFile: true, writable: writable, note: note))
             }
             self.append("scan finished — \(self.candidates.count) candidates")
         }
