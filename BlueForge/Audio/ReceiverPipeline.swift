@@ -14,6 +14,9 @@ import os
 final class ReceiverPipeline: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var lastError: String?
+    @Published private(set) var requestedOutputRate: Double = 0
+    @Published private(set) var actualOutputRate: Double = 0
+    @Published private(set) var outputRoute: String = ""
 
     private let codecManager: CodecManager
     private let peripheral = BLEAudioPeripheral()
@@ -43,6 +46,9 @@ final class ReceiverPipeline: ObservableObject {
             peripheral.start()
             isRunning = true
             lastError = nil
+            requestedOutputRate = playback.requestedRate
+            actualOutputRate = playback.actualRate
+            outputRoute = playback.routeName
         } catch {
             lastError = error.localizedDescription
             log.error("receiver start failed: \(error.localizedDescription)")

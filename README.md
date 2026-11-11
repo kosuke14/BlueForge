@@ -34,6 +34,14 @@ into bluetoothd (and any PPL-bypass-style exploit development) is out of
 scope for this project; the hook layer activates only on an existing
 jailbreak runtime (docs/SANDBOX_A2DP.md).
 
+## Sample rates (USB-DAC-style behaviour)
+
+Playback requests the codec's native rate via `AVAudioSession
+setPreferredSampleRate` and reports the rate the route actually runs at.
+USB audio routes honour >48 kHz (like a USB-DAC); the built-in speaker and
+Bluetooth A2DP routes are capped at 48 kHz by their own hardware/negotiation
+— the engine resamples and the UI shows the real output rate.
+
 ## Honest scope / limitations (read first)
 
 1. **Jailed iPhone cannot change classic A2DP codec negotiation.** iOS decides

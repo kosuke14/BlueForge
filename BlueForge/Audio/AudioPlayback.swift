@@ -14,9 +14,20 @@ final class AudioPlayback {
     private var format: AVAudioFormat?
     private var attached = false
 
+    // USB-DAC-style rate handling: request the codec's native rate via
+    // AVAudioSession and report what the route actually runs at. USB audio
+    // routes honour >48 kHz; speaker/BT routes fall back to their own cap
+    // (48 kHz) — the engine resamples, nothing is lost or faked.
+    private(set) var requestedRate: Double = 48000
+    private(set) var actualRate: Double = 0
+    private(set) var routeName: String = ""
+
     func start(sampleRate: Double, channels: Int) throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default, options: [.allowBluetoothA2DP])
+
+        let clamped = min(max(sampleRate, 8000), 384_000)
+        try session.setPreferredSampleRate(clamped)
         try session.setActive(true)
 
         guard let fmt = AVAudioFormat(standardFormatWithSampleRate: sampleRate,
@@ -33,6 +44,10 @@ final class AudioPlayback {
         try engine.start()
         player.play()
         format = fmt
+
+        requestedRate = clamped
+        actualRate = session.sampleRate
+        routeName = session.currentRoute.outputs.first?.portName ?? "unknown"
     }
 
     func play(pcm: Data) {

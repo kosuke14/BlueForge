@@ -159,6 +159,22 @@ struct ContentView: View {
                             Spacer()
                             Text("\(receiver.subscriberCount)")
                         }
+                        HStack {
+                            Text("Output")
+                            Spacer()
+                            Text(receiver.actualOutputRate > 0
+                                 ? String(format: "%.1f kHz", receiver.actualOutputRate / 1000)
+                                 : "-")
+                                .foregroundColor(
+                                    receiver.actualOutputRate >= receiver.requestedOutputRate - 1
+                                    ? .green : .orange)
+                        }
+                        .font(.caption)
+                        if receiver.actualOutputRate > 0,
+                           receiver.actualOutputRate < receiver.requestedOutputRate - 1 {
+                            Text("この経路 (\(receiver.outputRoute)) は 48 kHz 上限のため実出力に落とされています。>48 kHz は USB オーディオ経由でのみ有効です。")
+                                .font(.caption2).foregroundColor(.secondary)
+                        }
                         Button(receiver.isRunning ? "Stop Receiver" : "Start Receiver") {
                             if receiver.isRunning { receiver.stop() } else { receiver.start() }
                         }
